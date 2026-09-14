@@ -1,4 +1,5 @@
 import path from 'node:path'
+import os from 'node:os'
 
 export interface GatewayConfig {
   /** iLink 凭证与 gateway 状态存储目录 */
@@ -13,7 +14,7 @@ export interface GatewayConfig {
 
 export function loadConfig(): GatewayConfig {
   return {
-    storageDir: process.env.GATEWAY_STORAGE_DIR ?? path.join(process.cwd(), '.storage'),
+    storageDir: process.env.GATEWAY_STORAGE_DIR ?? path.join(os.homedir(), '.wechat2agent'),
     workspace: process.env.GATEWAY_WORKSPACE || undefined,
     defaultBackend: process.env.GATEWAY_BACKEND ?? 'codex',
     logLevel: (process.env.LOG_LEVEL as GatewayConfig['logLevel']) ?? 'info',

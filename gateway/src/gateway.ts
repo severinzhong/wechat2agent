@@ -166,8 +166,14 @@ export class Gateway {
           else if (verbose === 'detail') enqueue(`[progress] ${e.message}`)
         } else if (e.type === 'error') {
           await this.deps.bot.send(userId, `任务报错：${e.message}`).catch((err) => console.error('error notify failed:', err))
-        } else if (e.type === 'text' && verbose === 'detail') {
-          enqueue(`[text] ${e.text.slice(0, 500)}`)
+        } else if (e.type === 'text') {
+          // 中间过程文本（模型逐步输出）：summary 档发一行摘要，detail 档发截断内容
+          if (verbose === 'summary') {
+            const brief = e.text.replace(/\s+/g, ' ').trim()
+            enqueue(`✎ ${brief.slice(0, 120)}${brief.length > 120 ? '…' : ''}`)
+          } else if (verbose === 'detail') {
+            enqueue(`[text] ${e.text.slice(0, 500)}`)
+          }
         }
       }
     })()

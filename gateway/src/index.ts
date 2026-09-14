@@ -60,6 +60,6 @@ async function loginWithRetry(retries = 3) {
 
 const creds = await loginWithRetry()
 console.log(`已登录: ${creds.accountId}`)
-console.log(`workspace: ${config.workspace}`)
+console.log(`默认 workspace: ${config.workspace ?? '(未设置，通过微信 /workdir 指定)'}`)
 await bot.start()
 console.log('gateway 运行中，/help 查看命令')

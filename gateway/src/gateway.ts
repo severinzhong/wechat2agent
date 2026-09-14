@@ -10,7 +10,8 @@ export interface GatewayDeps {
   bot: WeChatBot
   store: SessionStore
   adapters: Record<string, BackendAdapter>
-  workspace: string
+  /** 默认 workspace（可选；session.workspace 优先） */
+  workspace?: string
   defaultBackend: string
   /** 长任务进度心跳间隔（毫秒） */
   heartbeatMs: number
@@ -71,7 +72,7 @@ export class Gateway {
       model: session.model,
       variant: session.variant,
       verbose: session.verbose,
-      workdir: session.workspace ?? this.deps.workspace,
+      workdir: session.workspace ?? this.deps.workspace ?? '(未设置，用 /workdir 指定）',
       recentWorkdirs: session.recentWorkdirs ?? [],
       backends: Object.keys(this.deps.adapters),
       modelsOf: (b: string) => modelMap[b] ?? [],
@@ -118,9 +119,14 @@ export class Gateway {
       await this.deps.bot.reply(msg, `${session.backend} 不支持 session 列表`)
       return
     }
+    const workspace = session.workspace ?? this.deps.workspace
+    if (!workspace) {
+      await this.deps.bot.reply(msg, '还没有设置工作目录。先用 /workdir <路径> 设置（支持 ~）')
+      return
+    }
     let sessions
     try {
-      sessions = await adapter.listSessions(session.workspace ?? this.deps.workspace)
+      sessions = await adapter.listSessions(workspace)
     } catch (err) {
       await this.deps.bot.reply(msg, `获取 session 列表失败：${(err as Error).message}`)
       return
@@ -197,6 +203,10 @@ export class Gateway {
     }
 
     const workspace = session.workspace ?? this.deps.workspace
+    if (!workspace) {
+      await this.deps.bot.reply(msg, '还没有设置工作目录。先用 /workdir <路径> 设置（支持 ~）')
+      return
+    }
     const run = await this.tasks.start(msg.userId, adapter, {
       prompt: msg.text,
       workspace,

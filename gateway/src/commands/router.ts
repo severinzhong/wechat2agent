@@ -14,7 +14,16 @@ export interface CommandContext {
 export interface CommandOutput {
   replies: string[]
   /** 会话状态变更请求（由 gateway 应用到 session store） */
-  set?: { backend?: string; model?: string; variant?: string; verbose?: string }
+  set?: {
+    backend?: string
+    model?: string
+    variant?: string
+    verbose?: string
+    /** 恢复指定 native session（/resume 菜单选择） */
+    nativeSessionId?: string
+    /** 清除当前 backend 的 native session（/new） */
+    resetNativeSession?: boolean
+  }
   /** 输出的待选菜单（gateway 保存到会话） */
   menu?: { items: MenuItem[] }
 }
@@ -22,7 +31,14 @@ export interface CommandOutput {
 export interface MenuItem {
   label: string
   /** 选择后的效果描述为 set 请求 */
-  set: { backend?: string; model?: string; variant?: string; verbose?: string }
+  set: {
+    backend?: string
+    model?: string
+    variant?: string
+    verbose?: string
+    nativeSessionId?: string
+    resetNativeSession?: boolean
+  }
   /** 受任务互斥保护 */
   guardedByTask?: boolean
 }
@@ -43,6 +59,8 @@ const HELP = `可用命令：
 /model [名称] — 切换 model
 /effort [等级] — 切换推理强度（codex: reasoning effort，zl: variant）
 /verbose [none|heartbeat|summary|detail] — 过程反馈档位
+/new — 开启新会话（丢弃当前 backend 的对话上下文）
+/resume — 恢复最近的 session（菜单选择）
 /cancel — 取消当前任务
 菜单选择：回复 /1、/2…选择，/0 取消`
 
@@ -121,6 +139,13 @@ export class CommandRouter {
           },
         }
       }
+      case '/new': {
+        if (ctx.taskActive) return { replies: ['任务进行中，请先 /cancel'] }
+        return {
+          replies: [`已开启新会话（${ctx.backend} 的对话上下文已清空）`],
+          set: { resetNativeSession: true },
+        }
+      }
       case '/cancel':
         return { replies: [ctx.taskActive ? '任务已取消' : '当前没有运行中的任务'] }
       default:
@@ -134,6 +159,9 @@ export class CommandRouter {
     const item = menu.items[choice - 1]
     if (!item) return { replies: ['无效选项，菜单已取消'] }
     if (item.guardedByTask && ctx.taskActive) return { replies: ['任务进行中，请先 /cancel'] }
+    if (item.set.nativeSessionId) {
+      return { replies: [`已恢复 session：${item.label}`], set: item.set }
+    }
     const desc = item.set.backend ?? item.set.model ?? item.set.variant ?? item.set.verbose ?? ''
     return { replies: [`已切换到 ${desc}`], set: item.set }
   }

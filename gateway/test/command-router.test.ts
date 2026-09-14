@@ -133,6 +133,25 @@ describe('CommandRouter', () => {
     expect(out.set).toBeUndefined()
   })
 
+  it('/new resets native session', () => {
+    const out = new CommandRouter().handle('/new', ctx())
+    expect(out.replies[0]).toContain('已开启新会话')
+    expect(out.set?.resetNativeSession).toBe(true)
+  })
+
+  it('/new refused while task active', () => {
+    const out = new CommandRouter().handle('/new', ctx({ taskActive: true }))
+    expect(out.replies[0]).toContain('任务进行中')
+    expect(out.set).toBeUndefined()
+  })
+
+  it('menu choice with nativeSessionId replies resume confirmation', () => {
+    const r = new CommandRouter()
+    const out = r.resolveMenu(1, { items: [{ label: '回复 PHASE1_OK', set: { nativeSessionId: 'abc123' } }] }, ctx())
+    expect(out.replies[0]).toContain('已恢复 session')
+    expect(out.set?.nativeSessionId).toBe('abc123')
+  })
+
   it('unknown command gets a hint', () => {
     const out = new CommandRouter().handle('/xyz', ctx())
     expect(out.replies[0]).toContain('未知命令')

@@ -41,6 +41,8 @@ export interface BackendAdapter {
   listEfforts?(model?: string): Promise<string[]>
   /** 模型列表的附加说明（如缓存日期），展示在 /model 菜单中 */
   modelListNote?(): string | undefined
+  /** 列出当前 workspace 的最近 native session（用于 /resume） */
+  listSessions?(workspace: string): Promise<SessionSummary[]>
 }
 
 /** adapter 可选的生命周期钩子（网关注入，用于基础设施异常通知） */
@@ -51,3 +53,10 @@ export interface AdapterHooks {
 
 /** 任务的 liveness 兜底：连续无事件超过该毫秒数即报错（默认 5 分钟） */
 export const NO_EVENT_TIMEOUT_MS = 300_000
+
+/** 可恢复的 native session 摘要（/resume 菜单用） */
+export interface SessionSummary {
+  id: string
+  title: string
+  updatedAt?: string
+}

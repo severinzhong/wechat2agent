@@ -79,6 +79,13 @@ export class Gateway {
       return
     }
 
+    // /resume 需要 adapter 的异步 session 列表，由 gateway 直接处理
+    if (text === '/resume') {
+      state.menu = undefined
+      await this.handleResume(msg, session, state, ctx.taskActive)
+      return
+    }
+
     // 其他命令：旧菜单静默作废
     state.menu = undefined
     const out = this.router.handle(text, ctx)
@@ -86,10 +93,57 @@ export class Gateway {
     await this.applyOutput(msg, session, out)
   }
 
+  private async handleResume(
+    msg: IncomingMessage,
+    session: GatewaySession,
+    state: PeerState,
+    taskActive: boolean,
+  ): Promise<void> {
+    if (taskActive) {
+      await this.deps.bot.reply(msg, '任务进行中，请先 /cancel')
+      return
+    }
+    const adapter = this.deps.adapters[session.backend]
+    if (!adapter?.listSessions) {
+      await this.deps.bot.reply(msg, `${session.backend} 不支持 session 列表`)
+      return
+    }
+    let sessions
+    try {
+      sessions = await adapter.listSessions(this.deps.workspace)
+    } catch (err) {
+      await this.deps.bot.reply(msg, `获取 session 列表失败：${(err as Error).message}`)
+      return
+    }
+    if (sessions.length === 0) {
+      await this.deps.bot.reply(msg, `当前 workspace 没有可恢复的 ${session.backend} session`)
+      return
+    }
+    const current = session.nativeSessionIds[session.backend]
+    const lines = sessions.map((s, i) => `/${i + 1} ${s.title}${s.id === current ? '（当前）' : ''}`)
+    state.menu = {
+      items: sessions.map((s) => ({
+        label: s.title,
+        set: { nativeSessionId: s.id },
+      })),
+    }
+    await this.deps.bot.reply(msg, `恢复 ${session.backend} 的最近 session：\n${lines.join('\n')}\n/0 取消`)
+  }
+
   private async applyOutput(
     msg: IncomingMessage,
     session: GatewaySession,
-    out: { replies: string[]; set?: { backend?: string; model?: string; variant?: string; verbose?: string } },
+    out: {
+      replies: string[]
+      set?: {
+        backend?: string
+        model?: string
+        variant?: string
+        verbose?: string
+        nativeSessionId?: string
+        resetNativeSession?: boolean
+      }
+    },
   ): Promise<void> {
     if (out.set?.backend && out.set.backend !== session.backend) {
       session.backend = out.set.backend
@@ -100,6 +154,8 @@ export class Gateway {
     if (out.set?.model) session.model = out.set.model
     if (out.set?.variant) session.variant = out.set.variant
     if (out.set?.verbose) session.verbose = out.set.verbose as VerboseLevel
+    if (out.set?.resetNativeSession) delete session.nativeSessionIds[session.backend]
+    if (out.set?.nativeSessionId) session.nativeSessionIds[session.backend] = out.set.nativeSessionId
     if (out.set) await this.deps.store.save(session)
     for (const reply of out.replies) await this.deps.bot.reply(msg, reply)
   }

@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process'
 import readline from 'node:readline'
 import { randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import { parseCodexLine, initialCodexState } from './codex-parse.js'
-import { NO_EVENT_TIMEOUT_MS, type BackendAdapter, type RunningTask, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
+import { NO_EVENT_TIMEOUT_MS, type BackendAdapter, type RunningTask, type SessionSummary, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
 
 export interface CodexAdapterOptions {
   bin?: string
@@ -79,11 +79,49 @@ export class CodexAdapter implements BackendAdapter {
     return undefined
   }
 
+  /**
+   * 列出当前 workspace 的最近 session。
+   * 扫描 ~/.codex/sessions/Y/M/D/rollout-*.jsonl，解析首行 session_meta，
+   * 按 cwd === workspace 过滤（resume 会沿用原 cwd，跨目录会绕过 workspace 白名单）。
+   */
+  async listSessions(workspace: string): Promise<SessionSummary[]> {
+    const home = process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex')
+    const root = path.join(home, 'sessions')
+    const files: { file: string; mtime: number }[] = []
+    for (const y of await readdirSafe(root)) {
+      for (const m of await readdirSafe(path.join(root, y))) {
+        for (const d of await readdirSafe(path.join(root, y, m))) {
+          for (const f of await readdirSafe(path.join(root, y, m, d))) {
+            if (!f.endsWith('.jsonl')) continue
+            const file = path.join(root, y, m, d, f)
+            const st = await stat(file).catch(() => undefined)
+            if (st) files.push({ file, mtime: st.mtimeMs })
+          }
+        }
+      }
+    }
+    files.sort((a, b) => b.mtime - a.mtime)
+
+    const out: SessionSummary[] = []
+    for (const { file, mtime } of files) {
+      if (out.length >= 5) break
+      const meta = await readSessionMeta(file)
+      if (!meta || meta.cwd !== workspace) continue
+      out.push({
+        id: meta.id,
+        title: new Date(meta.timestamp).toLocaleString('zh-CN', { hour12: false }),
+        updatedAt: new Date(mtime).toISOString(),
+      })
+    }
+    return out
+  }
+
   async startTask(input: StartTaskInput): Promise<RunningTask> {
     const effortArgs = input.effort ? ['-c', `model_reasoning_effort="${input.effort}"`] : []
+    // resume 子命令不接受 -s/--sandbox（会话沿用创建时的配置）
     const args = input.nativeSessionId
       ? [
-          'exec', 'resume', input.nativeSessionId, '--json',
+          'exec', 'resume', input.nativeSessionId, '--json', '--skip-git-repo-check',
           ...(input.model ? ['-m', input.model] : []),
           ...effortArgs,
           input.prompt,
@@ -151,5 +189,29 @@ export class CodexAdapter implements BackendAdapter {
       done,
       cancel: async () => { child.kill('SIGTERM') },
     }
+  }
+}
+
+async function readdirSafe(dir: string): Promise<string[]> {
+  try {
+    return await readdir(dir)
+  } catch {
+    return []
+  }
+}
+
+async function readSessionMeta(file: string): Promise<{ id: string; cwd: string; timestamp: string } | undefined> {
+  try {
+    const content = await readFile(file, 'utf8')
+    const firstLine = content.split('\n', 1)[0] ?? ''
+    const e = JSON.parse(firstLine) as { type?: string; payload?: { session_id?: string; cwd?: string; timestamp?: string } }
+    if (e.type !== 'session_meta' || !e.payload?.session_id || !e.payload.cwd) return undefined
+    return {
+      id: e.payload.session_id,
+      cwd: e.payload.cwd,
+      timestamp: e.payload.timestamp ?? '',
+    }
+  } catch {
+    return undefined
   }
 }

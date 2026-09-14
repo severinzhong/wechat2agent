@@ -2,7 +2,15 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import readline from 'node:readline'
 import { randomUUID } from 'node:crypto'
 import { parseZlLine, initialZlState } from './zl-parse.js'
-import { NO_EVENT_TIMEOUT_MS, type AdapterHooks, type BackendAdapter, type RunningTask, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
+import { NO_EVENT_TIMEOUT_MS, type AdapterHooks, type BackendAdapter, type RunningTask, type SessionSummary, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
+
+/** 剔除从父进程（如 IDE 派生 shell）继承的 server 认证变量，保证回环 server 无 basic auth、行为一致。 */
+function cleanEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env }
+  delete env.KILO_SERVER_USERNAME
+  delete env.KILO_SERVER_PASSWORD
+  return env
+}
 
 /** 管理单 workspace 的 zl serve 实例（server 与工作目录绑定，见 docs/research.md 5.3）。 */
 export class ZlServerManager {
@@ -20,6 +28,7 @@ export class ZlServerManager {
     const child = spawn(this.bin, ['serve', '--port', '0', '--hostname', '127.0.0.1'], {
       cwd: this.workspace,
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: cleanEnv(),
     })
     this.server = child
     this.url = await new Promise<string>((resolve, reject) => {
@@ -91,6 +100,15 @@ export class ZlAdapter implements BackendAdapter {
     return ['minimal', 'low', 'medium', 'high', 'max']
   }
 
+  /** 列出 server 当前目录的最近 session（server 按 directory 过滤，天然限定 workspace）。 */
+  async listSessions(): Promise<SessionSummary[]> {
+    const base = await this.serverManager.ensureServer()
+    const res = await fetch(`${base}/session`)
+    if (!res.ok) throw new Error(`GET /session failed: HTTP ${res.status}`)
+    const list = (await res.json()) as { id: string; title?: string }[]
+    return list.slice(0, 5).map((s) => ({ id: s.id, title: s.title || s.id.slice(0, 14) }))
+  }
+
   async startTask(input: StartTaskInput): Promise<RunningTask> {
     const serverUrl = await this.serverManager.ensureServer()
     const args = [
@@ -100,7 +118,7 @@ export class ZlAdapter implements BackendAdapter {
       ...(input.effort ? ['--variant', input.effort] : []),
       input.prompt,
     ]
-    const child = spawn(this.bin, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(this.bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env: cleanEnv() })
 
     const queue: TaskEvent[] = []
     let notify: (() => void) | undefined

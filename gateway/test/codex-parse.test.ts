@@ -37,4 +37,13 @@ describe('parseCodexLine', () => {
     expect(r.state.lastError).toContain('503')
     expect(r.events).toEqual([{ type: 'error', message: expect.stringContaining('503') }])
   })
+
+  it('emits progress for command execution items', () => {
+    const line = JSON.stringify({
+      type: 'item.completed',
+      item: { id: 'item_1', type: 'command_execution', command: 'curl https://example.com', status: 'completed' },
+    })
+    const r = parseCodexLine(line, initialCodexState())
+    expect(r.events).toEqual([{ type: 'progress', message: expect.stringContaining('command_execution') }])
+  })
 })

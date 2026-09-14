@@ -7,6 +7,8 @@ export interface GatewayConfig {
   workspace: string
   defaultBackend: string
   logLevel: 'debug' | 'info' | 'warn' | 'error' | 'silent'
+  /** 长任务进度心跳间隔（毫秒），默认 120s */
+  heartbeatMs: number
 }
 
 export function loadConfig(): GatewayConfig {
@@ -15,5 +17,6 @@ export function loadConfig(): GatewayConfig {
     workspace: process.env.GATEWAY_WORKSPACE ?? process.cwd(),
     defaultBackend: process.env.GATEWAY_BACKEND ?? 'codex',
     logLevel: (process.env.LOG_LEVEL as GatewayConfig['logLevel']) ?? 'info',
+    heartbeatMs: Number(process.env.GATEWAY_HEARTBEAT_MS) || 120_000,
   }
 }

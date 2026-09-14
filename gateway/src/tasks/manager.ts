@@ -8,14 +8,14 @@ export class TaskManager {
     return this.active.get(peer)
   }
 
-  async start(peer: string, adapter: BackendAdapter, input: StartTaskInput): Promise<{ done: Promise<TaskResult> }> {
+  async start(peer: string, adapter: BackendAdapter, input: StartTaskInput): Promise<{ task: RunningTask; done: Promise<TaskResult> }> {
     if (this.active.has(peer)) throw new Error('任务进行中，请先 /cancel')
     const task = await adapter.startTask(input)
     this.active.set(peer, task)
     const done = task.done.finally(() => {
       if (this.active.get(peer) === task) this.active.delete(peer)
     })
-    return { done }
+    return { task, done }
   }
 
   async cancel(peer: string): Promise<boolean> {

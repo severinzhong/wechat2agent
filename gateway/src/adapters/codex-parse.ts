@@ -16,7 +16,7 @@ interface CodexEvent {
   type: string
   thread_id?: string
   message?: string
-  item?: { id?: string; type?: string; text?: string }
+  item?: { id?: string; type?: string; text?: string; command?: string; status?: string }
   error?: { message?: string }
   usage?: Record<string, unknown>
 }
@@ -40,6 +40,12 @@ export function parseCodexLine(
     // 同一 turn 可能出现多条 agent_message，后者覆盖（最终回复以最后一条为准）
     next.finalText = e.item.text
     events.push({ type: 'text', text: e.item.text })
+  } else if (e.type === 'item.completed' && e.item?.type && e.item.type !== 'agent_message') {
+    // 工具/命令等中间项：转为进度事件（跳过无信息量的 error 项，如 config 警告）
+    if (e.item.type !== 'error') {
+      const hint = e.item.command ? `：${e.item.command.slice(0, 60)}` : ''
+      events.push({ type: 'progress', message: `${e.item.type}${hint}` })
+    }
   } else if (e.type === 'turn.completed') {
     next.sawTurnCompleted = true
   } else if (e.type === 'turn.failed') {

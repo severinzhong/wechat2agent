@@ -4,16 +4,24 @@ export interface ZlParseState {
   sessionId?: string
   text: string
   sawStepFinish: boolean
+  /** 已完成的 step 数（step_finish 事件计数） */
+  steps: number
 }
 
 export function initialZlState(): ZlParseState {
-  return { text: '', sawStepFinish: false }
+  return { text: '', sawStepFinish: false, steps: 0 }
 }
 
 interface ZlEvent {
   type: string
   sessionID?: string
-  part?: { type?: string; text?: string; reason?: string }
+  part?: {
+    type?: string
+    text?: string
+    reason?: string
+    tool?: string
+    state?: { status?: string; input?: { command?: string; description?: string } }
+  }
 }
 
 export function parseZlLine(
@@ -35,6 +43,14 @@ export function parseZlLine(
     events.push({ type: 'text', text: e.part.text })
   } else if (e.type === 'step_finish') {
     next.sawStepFinish = true
+    next.steps += 1
+  } else if ((e.type === 'tool' || e.part?.type === 'tool') && e.part?.tool) {
+    const status = e.part.state?.status
+    const hint = e.part.state?.input?.description ?? e.part.state?.input?.command?.slice(0, 60) ?? ''
+    events.push({
+      type: 'progress',
+      message: `工具 ${e.part.tool}${status ? ` ${status}` : ''}${hint ? `：${hint}` : ''}`,
+    })
   }
 
   return { events, state: next }

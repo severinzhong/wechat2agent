@@ -10,6 +10,8 @@ export interface GatewayDeps {
   adapters: Record<string, BackendAdapter>
   workspace: string
   defaultBackend: string
+  /** 长任务进度心跳间隔（毫秒） */
+  heartbeatMs: number
 }
 
 interface PeerState {
@@ -121,7 +123,32 @@ export class Gateway {
 
     await this.deps.bot.reply(msg, `已开始（${session.backend}${session.model ? `/${session.model}` : ''}${session.variant ? ` · ${session.variant}` : ''}）`)
 
+    // 事件消费 + 心跳：进度事件计数，错误立即透传，定期汇报运行状态
+    const userId = msg.userId
+    const startedAt = Date.now()
+    let progressCount = 0
+    let lastAction = ''
+
+    const consume = (async () => {
+      for await (const e of run.task.events) {
+        if (e.type === 'progress') {
+          progressCount++
+          lastAction = e.message
+        } else if (e.type === 'error') {
+          await this.deps.bot.send(userId, `任务报错：${e.message}`).catch((err) => console.error('error notify failed:', err))
+        }
+      }
+    })()
+
+    const heartbeat = setInterval(() => {
+      const mins = Math.max(1, Math.round((Date.now() - startedAt) / 60_000))
+      const text = `任务运行中（约 ${mins} 分钟，${progressCount} 个进度事件）\n最近：${lastAction || '等待模型输出'}\n/cancel 取消`
+      this.deps.bot.send(userId, text).catch((err) => console.error('heartbeat send failed:', err))
+    }, this.deps.heartbeatMs)
+
     const result = await run.done
+    clearInterval(heartbeat)
+    await consume.catch(() => {})
     if (result.nativeSessionId) {
       session.nativeSessionIds[session.backend] = result.nativeSessionId
       await this.deps.store.save(session)

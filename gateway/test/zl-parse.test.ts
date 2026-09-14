@@ -22,4 +22,23 @@ describe('parseZlLine', () => {
   it('skips malformed lines without throwing', () => {
     expect(parseZlLine('{broken', initialZlState()).events).toEqual([])
   })
+
+  it('emits progress for tool calls and counts steps', () => {
+    const toolLine = JSON.stringify({
+      type: 'tool',
+      sessionID: 'ses_x',
+      part: { type: 'tool', tool: 'bash', state: { status: 'running', input: { command: 'curl -sL https://example.com' } } },
+    })
+    let state = initialZlState()
+    const r1 = parseZlLine(toolLine, state)
+    state = r1.state
+    expect(r1.events[0]?.type).toBe('progress')
+    expect(r1.events[0]).toMatchObject({ message: expect.stringContaining('bash') })
+
+    const finishLine = JSON.stringify({ type: 'step_finish', sessionID: 'ses_x', part: { type: 'step-finish', reason: 'tool-calls' } })
+    const r2 = parseZlLine(finishLine, state)
+    state = r2.state
+    expect(state.steps).toBe(1)
+    expect(state.sawStepFinish).toBe(true)
+  })
 })

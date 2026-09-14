@@ -25,6 +25,7 @@ const gateway = new Gateway({
   },
   workspace: config.workspace,
   defaultBackend: config.defaultBackend,
+  heartbeatMs: config.heartbeatMs,
 })
 
 bot.onMessage((msg) => {

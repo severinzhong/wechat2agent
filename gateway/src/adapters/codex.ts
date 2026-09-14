@@ -12,6 +12,8 @@ export interface CodexAdapterOptions {
   sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access'
   /** liveness 兜底超时（毫秒），测试可注入小值 */
   noEventMs?: number
+  /** liveness 检查间隔（毫秒），测试可注入小值 */
+  livenessCheckMs?: number
 }
 
 interface CodexModelCatalogEntry {
@@ -26,6 +28,7 @@ export class CodexAdapter implements BackendAdapter {
   private readonly bin: string
   private readonly sandbox: string
   private readonly noEventMs: number
+  private readonly livenessCheckMs: number
   private catalogCache?: CodexModelCatalogEntry[]
   private catalogFetchedAt?: string
 
@@ -33,6 +36,7 @@ export class CodexAdapter implements BackendAdapter {
     this.bin = options.bin ?? process.env.CODEX_BIN ?? 'codex'
     this.sandbox = options.sandbox ?? 'workspace-write'
     this.noEventMs = options.noEventMs ?? NO_EVENT_TIMEOUT_MS
+    this.livenessCheckMs = options.livenessCheckMs ?? 30_000
   }
 
   /** 读取 codex 模型 catalog（~/.codex/models_cache.json），结构变化时降级为空。 */
@@ -119,7 +123,7 @@ export class CodexAdapter implements BackendAdapter {
         push({ type: 'error', message: `任务超过 ${idleMin} 分钟无事件，可能挂起，已终止` })
         child.kill('SIGTERM')
       }
-    }, 30_000)
+    }, this.livenessCheckMs)
 
     const done = new Promise<TaskResult>((resolve) => {
       child.on('close', (code) => {

@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest'
+import path from 'node:path'
 import { CodexAdapter } from '../src/adapters/codex.js'
 
 // liveness 集成测试：用一个永远挂起、不产生任何输出的假 bin，
-// 注入极小的 noEventMs，验证超时后产生 error 事件且任务以失败结束。
+// 注入极小的 noEventMs/livenessCheckMs，验证超时后产生 error 事件且任务以失败结束。
+const HANG_BIN = path.join(__dirname, 'fixtures/hang-bin.sh')
+
 describe('adapter liveness', () => {
   it('emits error and fails when no events arrive within noEventMs', async () => {
-    const adapter = new CodexAdapter({ bin: '/bin/sleep', sandbox: 'read-only', noEventMs: 1_500 })
+    const adapter = new CodexAdapter({ bin: HANG_BIN, sandbox: 'read-only', noEventMs: 300, livenessCheckMs: 100 })
     const task = await adapter.startTask({ prompt: 'x', workspace: '/tmp' })
 
     const events: string[] = []

@@ -112,6 +112,27 @@ describe('CommandRouter', () => {
     expect(out.set).toBeUndefined()
   })
 
+  it('/verbose opens a 4-level menu with current marked', () => {
+    const out = new CommandRouter().handle('/verbose', ctx({ verbose: 'summary' }))
+    expect(out.replies[0]).toContain('/1 none')
+    expect(out.replies[0]).toContain('/2 heartbeat')
+    expect(out.replies[0]).toContain('/3 summary')
+    expect(out.replies[0]).toContain('/4 detail')
+    expect(out.replies[0]).toContain('summary 摘要（每个事件一行，节流合并）（当前）')
+  })
+
+  it('/verbose detail sets level directly', () => {
+    const out = new CommandRouter().handle('/verbose detail', ctx())
+    expect(out.replies[0]).toContain('detail')
+    expect(out.set?.verbose).toBe('detail')
+  })
+
+  it('/verbose rejects unknown level', () => {
+    const out = new CommandRouter().handle('/verbose loud', ctx())
+    expect(out.replies[0]).toContain('未知档位')
+    expect(out.set).toBeUndefined()
+  })
+
   it('unknown command gets a hint', () => {
     const out = new CommandRouter().handle('/xyz', ctx())
     expect(out.replies[0]).toContain('未知命令')

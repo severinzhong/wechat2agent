@@ -1,6 +1,6 @@
 import type { WeChatBot, IncomingMessage } from '@wechatbot/wechatbot'
 import { CommandRouter, type MenuItem } from './commands/router.js'
-import type { SessionStore, GatewaySession } from './sessions/types.js'
+import type { SessionStore, GatewaySession, VerboseLevel } from './sessions/types.js'
 import { TaskManager } from './tasks/manager.js'
 import type { BackendAdapter } from './adapters/types.js'
 
@@ -62,6 +62,7 @@ export class Gateway {
       backend: session.backend,
       model: session.model,
       variant: session.variant,
+      verbose: session.verbose,
       backends: Object.keys(this.deps.adapters),
       modelsOf: (b: string) => modelMap[b] ?? [],
       effortsOf: (b: string, _model?: string) => effortMap[b] ?? [],
@@ -88,7 +89,7 @@ export class Gateway {
   private async applyOutput(
     msg: IncomingMessage,
     session: GatewaySession,
-    out: { replies: string[]; set?: { backend?: string; model?: string; variant?: string } },
+    out: { replies: string[]; set?: { backend?: string; model?: string; variant?: string; verbose?: string } },
   ): Promise<void> {
     if (out.set?.backend && out.set.backend !== session.backend) {
       session.backend = out.set.backend
@@ -98,6 +99,7 @@ export class Gateway {
     }
     if (out.set?.model) session.model = out.set.model
     if (out.set?.variant) session.variant = out.set.variant
+    if (out.set?.verbose) session.verbose = out.set.verbose as VerboseLevel
     if (out.set) await this.deps.store.save(session)
     for (const reply of out.replies) await this.deps.bot.reply(msg, reply)
   }
@@ -123,32 +125,56 @@ export class Gateway {
 
     await this.deps.bot.reply(msg, `已开始（${session.backend}${session.model ? `/${session.model}` : ''}${session.variant ? ` · ${session.variant}` : ''}）`)
 
-    // 事件消费 + 心跳：进度事件计数，错误立即透传，定期汇报运行状态
+    // 事件消费：进度按 verbose 档位分流；错误始终透传；summary/detail 以 500ms 窗口合并防止轰炸
     const userId = msg.userId
     const startedAt = Date.now()
+    const verbose = session.verbose ?? 'heartbeat'
     let progressCount = 0
     let lastAction = ''
+
+    let pendingLines: string[] = []
+    let flushTimer: NodeJS.Timeout | undefined
+    const flush = async () => {
+      flushTimer = undefined
+      if (pendingLines.length === 0) return
+      const text = pendingLines.join('\n')
+      pendingLines = []
+      await this.deps.bot.send(userId, text).catch((err) => console.error('progress send failed:', err))
+    }
+    const enqueue = (line: string) => {
+      pendingLines.push(line)
+      if (!flushTimer) flushTimer = setTimeout(() => void flush(), 500)
+    }
 
     const consume = (async () => {
       for await (const e of run.task.events) {
         if (e.type === 'progress') {
           progressCount++
           lastAction = e.message
+          if (verbose === 'summary') enqueue(`· ${e.message}`)
+          else if (verbose === 'detail') enqueue(`[progress] ${e.message}`)
         } else if (e.type === 'error') {
           await this.deps.bot.send(userId, `任务报错：${e.message}`).catch((err) => console.error('error notify failed:', err))
+        } else if (e.type === 'text' && verbose === 'detail') {
+          enqueue(`[text] ${e.text.slice(0, 500)}`)
         }
       }
     })()
 
-    const heartbeat = setInterval(() => {
-      const mins = Math.max(1, Math.round((Date.now() - startedAt) / 60_000))
-      const text = `任务运行中（约 ${mins} 分钟，${progressCount} 个进度事件）\n最近：${lastAction || '等待模型输出'}\n/cancel 取消`
-      this.deps.bot.send(userId, text).catch((err) => console.error('heartbeat send failed:', err))
-    }, this.deps.heartbeatMs)
+    const heartbeat =
+      verbose === 'heartbeat'
+        ? setInterval(() => {
+            const mins = Math.max(1, Math.round((Date.now() - startedAt) / 60_000))
+            const text = `任务运行中（约 ${mins} 分钟，${progressCount} 个进度事件）\n最近：${lastAction || '等待模型输出'}\n/cancel 取消`
+            this.deps.bot.send(userId, text).catch((err) => console.error('heartbeat send failed:', err))
+          }, this.deps.heartbeatMs)
+        : undefined
 
     const result = await run.done
-    clearInterval(heartbeat)
+    if (heartbeat) clearInterval(heartbeat)
+    if (flushTimer) clearTimeout(flushTimer)
     await consume.catch(() => {})
+    await flush()
     if (result.nativeSessionId) {
       session.nativeSessionIds[session.backend] = result.nativeSessionId
       await this.deps.store.save(session)

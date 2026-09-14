@@ -2,6 +2,7 @@ export interface CommandContext {
   backend: string
   model?: string
   variant?: string
+  verbose?: string
   backends: string[]
   modelsOf: (backend: string) => string[]
   effortsOf: (backend: string, model?: string) => string[]
@@ -13,7 +14,7 @@ export interface CommandContext {
 export interface CommandOutput {
   replies: string[]
   /** 会话状态变更请求（由 gateway 应用到 session store） */
-  set?: { backend?: string; model?: string; variant?: string }
+  set?: { backend?: string; model?: string; variant?: string; verbose?: string }
   /** 输出的待选菜单（gateway 保存到会话） */
   menu?: { items: MenuItem[] }
 }
@@ -21,17 +22,27 @@ export interface CommandOutput {
 export interface MenuItem {
   label: string
   /** 选择后的效果描述为 set 请求 */
-  set: { backend?: string; model?: string; variant?: string }
+  set: { backend?: string; model?: string; variant?: string; verbose?: string }
   /** 受任务互斥保护 */
   guardedByTask?: boolean
 }
 
+export const VERBOSE_LEVELS = ['none', 'heartbeat', 'summary', 'detail'] as const
+
+const VERBOSE_LABELS: Record<string, string> = {
+  none: '无（仅最终结果）',
+  heartbeat: '心跳（定期汇报进度）',
+  summary: '摘要（每个事件一行，节流合并）',
+  detail: '详情（每个事件内容，截断节流）',
+}
+
 const HELP = `可用命令：
 /help — 显示本帮助
-/status — 查看当前 backend、model、effort、任务状态
+/status — 查看当前 backend、model、effort、verbose、任务状态
 /backend [名称] — 切换 backend
 /model [名称] — 切换 model
 /effort [等级] — 切换推理强度（codex: reasoning effort，zl: variant）
+/verbose [none|heartbeat|summary|detail] — 过程反馈档位
 /cancel — 取消当前任务
 菜单选择：回复 /1、/2…选择，/0 取消`
 
@@ -48,7 +59,7 @@ export class CommandRouter {
       case '/status':
         return {
           replies: [
-            `当前状态\nbackend: ${ctx.backend}\nmodel: ${ctx.model ?? '(默认)'}\neffort: ${ctx.variant ?? '(默认)'}\n任务: ${ctx.taskActive ? '运行中' : '无'}`,
+            `当前状态\nbackend: ${ctx.backend}\nmodel: ${ctx.model ?? '(默认)'}\neffort: ${ctx.variant ?? '(默认)'}\nverbose: ${ctx.verbose ?? 'heartbeat'}\n任务: ${ctx.taskActive ? '运行中' : '无'}`,
           ],
         }
       case '/backend':
@@ -95,6 +106,21 @@ export class CommandRouter {
           },
         }
       }
+      case '/verbose': {
+        const current = ctx.verbose ?? 'heartbeat'
+        if (args[0]) {
+          if (!(VERBOSE_LEVELS as readonly string[]).includes(args[0])) {
+            return { replies: [`未知档位: ${args[0]}（可选：${VERBOSE_LEVELS.join(' / ')}）`] }
+          }
+          return { replies: [`过程反馈已切换为 ${args[0]}（${VERBOSE_LABELS[args[0]]}）`], set: { verbose: args[0] } }
+        }
+        return {
+          replies: [menuText('过程反馈档位', VERBOSE_LEVELS.map((v) => `${v} ${VERBOSE_LABELS[v]}${v === current ? '（当前）' : ''}`))],
+          menu: {
+            items: VERBOSE_LEVELS.map((v) => ({ label: v, set: { verbose: v } })),
+          },
+        }
+      }
       case '/cancel':
         return { replies: [ctx.taskActive ? '任务已取消' : '当前没有运行中的任务'] }
       default:
@@ -108,7 +134,7 @@ export class CommandRouter {
     const item = menu.items[choice - 1]
     if (!item) return { replies: ['无效选项，菜单已取消'] }
     if (item.guardedByTask && ctx.taskActive) return { replies: ['任务进行中，请先 /cancel'] }
-    const desc = item.set.backend ?? item.set.model ?? item.set.variant ?? ''
+    const desc = item.set.backend ?? item.set.model ?? item.set.variant ?? item.set.verbose ?? ''
     return { replies: [`已切换到 ${desc}`], set: item.set }
   }
 

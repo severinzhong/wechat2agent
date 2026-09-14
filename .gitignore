@@ -9,4 +9,5 @@ build/
 .idea/
 .vscode/
 *.log
+gateway/.storage/
 

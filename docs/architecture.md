@@ -74,6 +74,28 @@ task.failed
 task.cancelled
 ```
 
+### 3.1 微信命令协议
+
+采用斜杠命名空间，路由规则只有一条：`/` 开头的消息进入命令解析，其余一律进 agent 会话。
+
+```text
+用户: /backend
+网关: 切换 backend
+      /1 codex
+      /2 zl
+      /0 取消
+用户: /2
+网关: 已切换到 zl
+```
+
+- 编号菜单的选项以 `/1`、`/2` 形式选择，`/0` 取消；不使用裸数字，不引入 pending 状态机。
+- 菜单 fallback：任何不匹配当前菜单选项的输入都使菜单作废并回到正常流程。非斜杠消息静默进 agent，其他 `/` 命令视为新命令，越界选项提示"无效选项，菜单已取消"。
+- 支持参数直写跳过菜单：`/backend zl`、`/model glm-5.2`。
+- 命令交互（含菜单问答）不进入 agent 会话上下文。
+- 破坏性命令（任务运行中切换 backend 等）需要显式确认或先 `/cancel`。
+- agent 审批请求复用同一套斜杠选择机制：`/1 批准`、`/2 拒绝`。
+- `/help` 提供命令发现。
+
 ## 4. Backend Adapter
 
 每个 backend 建议实现：
@@ -200,9 +222,9 @@ wechat2agent/
 
 ### Phase 0：技术验证
 
-- 确认 `wechatbot` 的登录、收消息和回复。
+- 确认 `wechatbot` 的登录、收消息和回复。（已完成，见 research.md 2.4）
 - 确认 Codex `exec --json` 的事件映射。
-- 确认 ZL attach/server API 的持续 session、换模型和取消。
+- 确认 ZL attach/server API 的持续 session、换模型和取消。（已完成，见 research.md 5.2）
 - 记录各 adapter 的权限需求。
 
 ### Phase 1：最小 Gateway

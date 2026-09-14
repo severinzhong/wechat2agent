@@ -95,7 +95,38 @@ wechatbot SDK       作为独立 Gateway 的起始接入层
 Tencent 仓库        作为 iLink 协议和边界行为的对照实现
 ```
 
+该结论已经过 Phase 0 实测验证（见 2.4）。
+
 不建议直接把腾讯 OpenClaw 插件作为本项目运行时依赖，因为它绑定 OpenClaw channel/runtime 接口。
+
+### 2.4 Phase 0 实测（2026-09-14）
+
+实测环境：macOS、Node.js v22.13.1、`@wechatbot/wechatbot` 2.2.0（零运行时依赖）。实测脚本与产物在系统临时目录，不进仓库。
+
+#### API 表面速记
+
+- 构造：`new WeChatBot({ storage: 'file' | 'memory' | Storage, storageDir, logLevel, loginCallbacks, botAgent, baseUrl })`。
+- 生命周期：`login({ force, callbacks })` → `start()` / `run()` / `stop()` / `isRunning`。
+- 登录回调：`onQrUrl(url)`、`onScanned()`、`onExpired()`、`onVerifyCode(isRetry)`（pairing code 挑战）。
+- 收发：`onMessage(handler)`、`reply(msg, content)`、`send(userId, content)`（send 要求已有该用户的 context_token）、`sendTyping` / `stopTyping`、`download(msg)`（媒体下载，voice 可转 WAV）。
+- 事件：`login`、`message`、`session:expired`、`session:restored`、`error`、`poll:start`、`poll:stop`、`close`。
+- 扩展：Express 风格中间件（内置 logging / rateLimit / typeFilter / filter）、`MessageBuilder` 链式构造、可插拔 `Storage` 接口。
+- 凭证结构：`{ token, baseUrl, accountId, userId, savedAt }`；`accountId` 形如 `<hex>@im.bot`，`userId` 形如 `<base64ish>@im.wechat`。
+
+#### 实测通过项
+
+1. QR 登录：扫码 → confirmed → 凭证返回，全链路正常。
+2. 文本收发：收到文本后 612ms 内完成 `sendTyping` + echo 回复。
+3. 图片接收：`type=image`，CDN 下载并 AES-128-ECB 解密成功（77181 bytes）。
+4. context_token：由 SDK 按 `(accountId, userId)` 自动缓存并随回复携带，调用方无感知。
+5. 凭证持久化：`storageDir` 下 `credentials.json` / `context_tokens.json` / `cursor.json`，文件权限 600、目录权限 700；token 为明文，生产环境仍需 Keychain 或加密存储层。
+6. 重启免扫码：进程重启后 `login()` 直接恢复凭证，未触发 QR 流程。
+7. 长文本分片：阈值为 4000 字符（`MAX_TEXT_LENGTH`），超过后按段落 → 行 → 空格自然边界拆分；7000+ 字实测拆为 2 条，顺序正确、内容完整。未超阈值时整条发送。
+
+#### 发现的问题
+
+- **SDK 2.2.0 缺陷**：QR 状态轮询 `get_qrcode_status` 走 `apiGet`，复用了默认 15s HTTP 超时。服务器长 hold 或扫码稍慢时抛出 `TimeoutError` 并中断整个登录流程（`pollQrStatus` 未做超时重试）。实测中以临时 patch 将 `apiGet` 超时调至 60s 后登录成功。Gateway 若直接依赖该 SDK，需要上游修复、fork patch，或在网关侧捕获后重试登录。
+- 登录轮询 QR 刷新上限为 3 次（`MAX_QR_REFRESH_COUNT`），超过后抛 `AuthError`，网关需要把"重新发起登录"做成显式流程。
 
 ## 3. WeConnect 评估
 
@@ -224,10 +255,8 @@ Gateway session
 ## 8. 当前未决事项
 
 - Node.js、Swift/SwiftUI、Tauri，或混合架构。
-- `wechatbot` 直接依赖，还是抽取/对照腾讯协议层。
 - Codex 使用 `exec --json` 还是 app-server。
 - ZL 使用 CLI wrapper 还是直接 server HTTP/SSE API。
 - session store 使用 JSONL、SQLite、Keychain + 文件，还是其他组合。
 - 菜单栏应用是否与 Gateway 同进程，还是 supervisor + sidecar。
-- 微信侧命令协议和权限确认交互。
 

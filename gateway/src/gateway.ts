@@ -63,6 +63,7 @@ export class Gateway {
       backends: Object.keys(this.deps.adapters),
       modelsOf: (b: string) => modelMap[b] ?? [],
       effortsOf: (b: string, _model?: string) => effortMap[b] ?? [],
+      modelListNote: this.deps.adapters[session.backend]?.modelListNote?.(),
       taskActive: this.tasks.activeOf(msg.userId) !== undefined,
     }
 

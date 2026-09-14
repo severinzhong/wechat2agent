@@ -24,6 +24,7 @@ export class CodexAdapter implements BackendAdapter {
   private readonly bin: string
   private readonly sandbox: string
   private catalogCache?: CodexModelCatalogEntry[]
+  private catalogFetchedAt?: string
 
   constructor(options: CodexAdapterOptions = {}) {
     this.bin = options.bin ?? process.env.CODEX_BIN ?? 'codex'
@@ -36,12 +37,20 @@ export class CodexAdapter implements BackendAdapter {
     try {
       const home = process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex')
       const raw = await readFile(path.join(home, 'models_cache.json'), 'utf8')
-      const data = JSON.parse(raw) as { models?: CodexModelCatalogEntry[] }
+      const data = JSON.parse(raw) as { models?: CodexModelCatalogEntry[]; fetched_at?: string }
       this.catalogCache = Array.isArray(data.models) ? data.models : []
+      this.catalogFetchedAt = data.fetched_at
     } catch {
       this.catalogCache = []
     }
     return this.catalogCache
+  }
+
+  /** 模型缓存的拉取时间（用于提示列表可能过期） */
+  modelListNote(): string | undefined {
+    return this.catalogFetchedAt
+      ? `列表缓存于 ${this.catalogFetchedAt.slice(0, 10)}，可能过期；可用 /model <名称> 直写`
+      : undefined
   }
 
   async listModels(): Promise<string[]> {

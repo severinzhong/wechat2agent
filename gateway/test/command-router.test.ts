@@ -83,6 +83,17 @@ describe('CommandRouter', () => {
     expect(out.menu).toBeUndefined()
   })
 
+  it('/model accepts unlisted model with soft warning (cache may be stale)', () => {
+    const out = new CommandRouter().handle('/model gpt-5.6-sol', ctx())
+    expect(out.replies[0]).toContain('不在枚举列表中')
+    expect(out.set?.model).toBe('gpt-5.6-sol')
+  })
+
+  it('/model menu shows list note when provided', () => {
+    const out = new CommandRouter().handle('/model', ctx({ modelListNote: '列表缓存于 2026-06-04，可能过期' }))
+    expect(out.replies[0]).toContain('缓存于 2026-06-04')
+  })
+
   it('/effort lists efforts of current backend', () => {
     const out = new CommandRouter().handle('/effort', ctx())
     expect(out.replies[0]).toContain('/1 low')

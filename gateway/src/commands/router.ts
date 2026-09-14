@@ -5,6 +5,8 @@ export interface CommandContext {
   backends: string[]
   modelsOf: (backend: string) => string[]
   effortsOf: (backend: string, model?: string) => string[]
+  /** 模型列表的附加说明（如缓存过期提示） */
+  modelListNote?: string
   taskActive: boolean
 }
 
@@ -72,7 +74,7 @@ export class CommandRouter {
           }
         }
         return {
-          replies: [menuText(`切换 model（${ctx.backend}）`, models)],
+          replies: [menuText(`切换 model（${ctx.backend}）${ctx.modelListNote ? `\n${ctx.modelListNote}` : ''}`, models)],
           menu: {
             items: models.map((m) => ({ label: m, set: { model: m } })),
           },
@@ -130,7 +132,11 @@ export class CommandRouter {
   private applyModel(name: string, ctx: CommandContext): CommandOutput {
     const models = ctx.modelsOf(ctx.backend)
     if (models.length > 0 && !models.includes(name)) {
-      return { replies: [`未知 model: ${name}\n当前 backend（${ctx.backend}）可选：\n${models.join('\n')}`] }
+      // 枚举列表可能过期（如 codex models_cache.json），列表外模型软警告后允许直写
+      return {
+        replies: [`注意: ${name} 不在枚举列表中（缓存可能过期），将尝试使用\nmodel 已切换为 ${name}`],
+        set: { model: name },
+      }
     }
     return { replies: [`model 已切换为 ${name}`], set: { model: name } }
   }

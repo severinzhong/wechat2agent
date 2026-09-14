@@ -39,4 +39,6 @@ export interface BackendAdapter {
   defaultModel(): string | undefined
   /** 当前（或指定）模型支持的推理强度列表；不支持枚举时返回空数组 */
   listEfforts?(model?: string): Promise<string[]>
+  /** 模型列表的附加说明（如缓存日期），展示在 /model 菜单中 */
+  modelListNote?(): string | undefined
 }

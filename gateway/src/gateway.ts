@@ -207,6 +207,12 @@ export class Gateway {
       await this.deps.bot.reply(msg, '还没有设置工作目录。先用 /workdir <路径> 设置（支持 ~）')
       return
     }
+    // 持久化"最后一次使用的 workspace"（重启恢复现场），并记入最近列表
+    if (session.workspace !== workspace) {
+      session.workspace = workspace
+      session.recentWorkdirs = [workspace, ...(session.recentWorkdirs ?? []).filter((d) => d !== workspace)].slice(0, 5)
+      await this.deps.store.save(session)
+    }
     const run = await this.tasks.start(msg.userId, adapter, {
       prompt: msg.text,
       workspace,

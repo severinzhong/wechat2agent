@@ -15,7 +15,7 @@ const bot = new WeChatBot({
   botAgent: 'wechat2agent-gateway/0.1',
 })
 
-const zlServer = new ZlServerManager(config.workspace)
+const zlServer = new ZlServerManager()
 const gateway = new Gateway({
   bot,
   store: new FileSessionStore(path.join(config.storageDir, 'sessions')),

@@ -12,26 +12,24 @@ function cleanEnv(): NodeJS.ProcessEnv {
   return env
 }
 
-/** 管理单 workspace 的 zl serve 实例（server 与工作目录绑定，见 docs/research.md 5.3）。 */
+/** 管理 zl serve 实例（每个 workspace 一个，server 与工作目录绑定，见 docs/research.md 5.3）。 */
 export class ZlServerManager {
-  private server?: ChildProcess
-  private url?: string
+  private servers = new Map<string, { child: ChildProcess; url: string }>()
 
   constructor(
-    private readonly workspace: string,
     private readonly bin: string = process.env.ZL_BIN ?? 'zl',
     private readonly hooks: AdapterHooks = {},
   ) {}
 
-  async ensureServer(): Promise<string> {
-    if (this.url) return this.url
+  async ensureServer(workspace: string): Promise<string> {
+    const existing = this.servers.get(workspace)
+    if (existing) return existing.url
     const child = spawn(this.bin, ['serve', '--port', '0', '--hostname', '127.0.0.1'], {
-      cwd: this.workspace,
+      cwd: workspace,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: cleanEnv(),
     })
-    this.server = child
-    this.url = await new Promise<string>((resolve, reject) => {
+    const url = await new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('zl serve start timeout')), 15_000)
       child.stdout!.on('data', (d: Buffer) => {
         const m = /listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(d.toString())
@@ -45,19 +43,18 @@ export class ZlServerManager {
         reject(new Error(`zl serve exited early: ${code}`))
       })
     })
-    // serve 启动后注册死亡检测：清除缓存 url，并通知网关（server 死亡会导致所有 attach 的 run 挂起）
+    this.servers.set(workspace, { child, url })
+    // serve 启动后注册死亡检测：清除缓存，并通知网关（server 死亡会导致 attach 的 run 挂起）
     child.on('exit', (code) => {
-      this.url = undefined
-      this.server = undefined
-      this.hooks.onServeDead?.(`zl serve 退出（code ${code}）`)
+      this.servers.delete(workspace)
+      this.hooks.onServeDead?.(`zl serve（${workspace}）退出（code ${code}）`)
     })
-    return this.url
+    return url
   }
 
   async stop(): Promise<void> {
-    this.server?.kill('SIGTERM')
-    this.server = undefined
-    this.url = undefined
+    for (const { child } of this.servers.values()) child.kill('SIGTERM')
+    this.servers.clear()
   }
 }
 
@@ -100,9 +97,9 @@ export class ZlAdapter implements BackendAdapter {
     return ['minimal', 'low', 'medium', 'high', 'max']
   }
 
-  /** 列出 server 当前目录的最近 session（server 按 directory 过滤，天然限定 workspace）。 */
-  async listSessions(): Promise<SessionSummary[]> {
-    const base = await this.serverManager.ensureServer()
+  /** 列出指定 workspace 的最近 session（server 按 directory 过滤，天然限定）。 */
+  async listSessions(workspace: string): Promise<SessionSummary[]> {
+    const base = await this.serverManager.ensureServer(workspace)
     const res = await fetch(`${base}/session`)
     if (!res.ok) throw new Error(`GET /session failed: HTTP ${res.status}`)
     const list = (await res.json()) as { id: string; title?: string }[]
@@ -110,7 +107,7 @@ export class ZlAdapter implements BackendAdapter {
   }
 
   async startTask(input: StartTaskInput): Promise<RunningTask> {
-    const serverUrl = await this.serverManager.ensureServer()
+    const serverUrl = await this.serverManager.ensureServer(input.workspace)
     const args = [
       'run', '--attach', serverUrl, '--format', 'json', '--dir', input.workspace,
       ...(input.nativeSessionId ? ['--session', input.nativeSessionId] : []),

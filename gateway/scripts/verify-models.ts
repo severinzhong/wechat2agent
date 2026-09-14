@@ -1,7 +1,7 @@
 import { ZlAdapter, ZlServerManager } from '../src/adapters/zl.js'
 import { CodexAdapter } from '../src/adapters/codex.js'
 
-const zl = new ZlAdapter(new ZlServerManager('/tmp'))
+const zl = new ZlAdapter(new ZlServerManager())
 const codex = new CodexAdapter()
 
 const zlModels = await zl.listModels()

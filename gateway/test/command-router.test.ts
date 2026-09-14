@@ -5,6 +5,8 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
   return {
     backend: 'codex',
     model: 'gpt-5.5',
+    workdir: '/Users/zhong/Code/wechat2agent',
+    recentWorkdirs: [],
     backends: ['codex', 'zl'],
     modelsOf: (b: string) => (b === 'codex' ? ['gpt-5.5', 'gpt-5.4-mini'] : ['zhanlu/zhanlu/qwen3.7-max']),
     effortsOf: (b: string) => (b === 'codex' ? ['low', 'medium', 'high', 'xhigh'] : ['minimal', 'low', 'medium', 'high', 'max']),
@@ -150,6 +152,30 @@ describe('CommandRouter', () => {
     const out = r.resolveMenu(1, { items: [{ label: '回复 PHASE1_OK', set: { nativeSessionId: 'abc123' } }] }, ctx())
     expect(out.replies[0]).toContain('已恢复 session')
     expect(out.set?.nativeSessionId).toBe('abc123')
+  })
+
+  it('/workdir with path sets workspace', () => {
+    const out = new CommandRouter().handle('/workdir ~/Documents/Playground', ctx())
+    expect(out.set?.workspace).toBe('~/Documents/Playground')
+  })
+
+  it('/workdir without args and no history shows hint', () => {
+    const out = new CommandRouter().handle('/workdir', ctx())
+    expect(out.replies[0]).toContain('没有最近使用的目录')
+    expect(out.menu).toBeUndefined()
+  })
+
+  it('/workdir without args lists recent dirs as menu', () => {
+    const out = new CommandRouter().handle('/workdir', ctx({ recentWorkdirs: ['/Users/zhong/Code/lingmou', '/tmp'] }))
+    expect(out.replies[0]).toContain('/1 /Users/zhong/Code/lingmou')
+    expect(out.replies[0]).toContain('/2 /tmp')
+    expect(out.menu?.items[0]?.set.workspace).toBe('/Users/zhong/Code/lingmou')
+  })
+
+  it('/workdir refused while task active', () => {
+    const out = new CommandRouter().handle('/workdir /tmp', ctx({ taskActive: true }))
+    expect(out.replies[0]).toContain('任务进行中')
+    expect(out.set).toBeUndefined()
   })
 
   it('unknown command gets a hint', () => {

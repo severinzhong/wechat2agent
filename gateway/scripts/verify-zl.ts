@@ -6,7 +6,7 @@ if (!workspace) {
   process.exit(1)
 }
 
-const mgr = new ZlServerManager(workspace)
+const mgr = new ZlServerManager()
 const adapter = new ZlAdapter(mgr)
 try {
   const t1 = await adapter.startTask({ prompt: 'Reply with exactly: ADAPTER_OK', workspace })

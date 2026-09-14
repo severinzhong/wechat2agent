@@ -1,4 +1,6 @@
 import type { WeChatBot, IncomingMessage } from '@wechatbot/wechatbot'
+import os from 'node:os'
+import { stat } from 'node:fs/promises'
 import { CommandRouter, type MenuItem } from './commands/router.js'
 import type { SessionStore, GatewaySession, VerboseLevel } from './sessions/types.js'
 import { TaskManager } from './tasks/manager.js'
@@ -16,6 +18,12 @@ export interface GatewayDeps {
 
 interface PeerState {
   menu?: { items: MenuItem[] }
+}
+
+function expandHome(p: string): string {
+  if (p === '~') return os.homedir()
+  if (p.startsWith('~/')) return os.homedir() + p.slice(1)
+  return p
 }
 
 export class Gateway {
@@ -63,6 +71,8 @@ export class Gateway {
       model: session.model,
       variant: session.variant,
       verbose: session.verbose,
+      workdir: session.workspace ?? this.deps.workspace,
+      recentWorkdirs: session.recentWorkdirs ?? [],
       backends: Object.keys(this.deps.adapters),
       modelsOf: (b: string) => modelMap[b] ?? [],
       effortsOf: (b: string, _model?: string) => effortMap[b] ?? [],
@@ -110,7 +120,7 @@ export class Gateway {
     }
     let sessions
     try {
-      sessions = await adapter.listSessions(this.deps.workspace)
+      sessions = await adapter.listSessions(session.workspace ?? this.deps.workspace)
     } catch (err) {
       await this.deps.bot.reply(msg, `获取 session 列表失败：${(err as Error).message}`)
       return
@@ -140,11 +150,26 @@ export class Gateway {
         model?: string
         variant?: string
         verbose?: string
+        workspace?: string
         nativeSessionId?: string
         resetNativeSession?: boolean
       }
     },
   ): Promise<void> {
+    if (out.set?.workspace) {
+      // ~ 展开 + 存在性校验；切换目录时清空 native session（旧目录 session 在新目录恢复会跑错位置）
+      const expanded = expandHome(out.set.workspace)
+      const valid = await stat(expanded).then((s) => s.isDirectory()).catch(() => false)
+      if (!valid) {
+        await this.deps.bot.reply(msg, `目录不存在：${expanded}`)
+        return
+      }
+      session.workspace = expanded
+      session.nativeSessionIds = {}
+      const recent = [expanded, ...(session.recentWorkdirs ?? []).filter((d) => d !== expanded)]
+      session.recentWorkdirs = recent.slice(0, 5)
+      out.replies = out.replies.map((r) => r.replace(out.set!.workspace!, expanded) + '\n（native session 已清空，/resume 可恢复该目录的 session）')
+    }
     if (out.set?.backend && out.set.backend !== session.backend) {
       session.backend = out.set.backend
       // 切换 backend 时重置 model/variant（不同 backend 的取值集合不同）
@@ -171,9 +196,10 @@ export class Gateway {
       return
     }
 
+    const workspace = session.workspace ?? this.deps.workspace
     const run = await this.tasks.start(msg.userId, adapter, {
       prompt: msg.text,
-      workspace: this.deps.workspace,
+      workspace,
       model: session.model,
       effort: session.variant,
       nativeSessionId: session.nativeSessionIds[session.backend],

@@ -3,6 +3,10 @@ export interface CommandContext {
   model?: string
   variant?: string
   verbose?: string
+  /** 当前生效的 workdir */
+  workdir: string
+  /** 最近使用的 workdir（新→旧） */
+  recentWorkdirs: string[]
   backends: string[]
   modelsOf: (backend: string) => string[]
   effortsOf: (backend: string, model?: string) => string[]
@@ -19,6 +23,8 @@ export interface CommandOutput {
     model?: string
     variant?: string
     verbose?: string
+    /** 切换 workdir（gateway 负责 ~ 展开与存在性校验） */
+    workspace?: string
     /** 恢复指定 native session（/resume 菜单选择） */
     nativeSessionId?: string
     /** 清除当前 backend 的 native session（/new） */
@@ -36,6 +42,7 @@ export interface MenuItem {
     model?: string
     variant?: string
     verbose?: string
+    workspace?: string
     nativeSessionId?: string
     resetNativeSession?: boolean
   }
@@ -59,6 +66,7 @@ const HELP = `可用命令：
 /model [名称] — 切换 model
 /effort [等级] — 切换推理强度（codex: reasoning effort，zl: variant）
 /verbose [none|heartbeat|summary|detail] — 过程反馈档位
+/workdir [路径] — 切换工作目录（不带参数显示最近使用）
 /new — 开启新会话（丢弃当前 backend 的对话上下文）
 /resume — 恢复最近的 session（菜单选择）
 /cancel — 取消当前任务
@@ -77,7 +85,7 @@ export class CommandRouter {
       case '/status':
         return {
           replies: [
-            `当前状态\nbackend: ${ctx.backend}\nmodel: ${ctx.model ?? '(默认)'}\neffort: ${ctx.variant ?? '(默认)'}\nverbose: ${ctx.verbose ?? 'heartbeat'}\n任务: ${ctx.taskActive ? '运行中' : '无'}`,
+            `当前状态\nbackend: ${ctx.backend}\nmodel: ${ctx.model ?? '(默认)'}\neffort: ${ctx.variant ?? '(默认)'}\nverbose: ${ctx.verbose ?? 'heartbeat'}\nworkdir: ${ctx.workdir}\n任务: ${ctx.taskActive ? '运行中' : '无'}`,
           ],
         }
       case '/backend':
@@ -139,6 +147,27 @@ export class CommandRouter {
           },
         }
       }
+      case '/workdir': {
+        if (ctx.taskActive) return { replies: ['任务进行中，请先 /cancel 再切换目录'] }
+        if (args[0]) {
+          return { replies: [`切换 workdir 到 ${args[0]}`], set: { workspace: args[0] } }
+        }
+        const recent = ctx.recentWorkdirs
+        if (recent.length === 0) {
+          return { replies: [`当前 workdir: ${ctx.workdir}\n没有最近使用的目录，直写 /workdir <路径> 切换（支持 ~）`] }
+        }
+        return {
+          replies: [
+            menuText(
+              `切换 workdir（当前：${ctx.workdir}）`,
+              recent.map((d) => d + (d === ctx.workdir ? '（当前）' : '')),
+            ),
+          ],
+          menu: {
+            items: recent.map((d) => ({ label: d, set: { workspace: d }, guardedByTask: true })),
+          },
+        }
+      }
       case '/new': {
         if (ctx.taskActive) return { replies: ['任务进行中，请先 /cancel'] }
         return {
@@ -161,6 +190,9 @@ export class CommandRouter {
     if (item.guardedByTask && ctx.taskActive) return { replies: ['任务进行中，请先 /cancel'] }
     if (item.set.nativeSessionId) {
       return { replies: [`已恢复 session：${item.label}`], set: item.set }
+    }
+    if (item.set.workspace) {
+      return { replies: [`切换 workdir 到 ${item.set.workspace}`], set: item.set }
     }
     const desc = item.set.backend ?? item.set.model ?? item.set.variant ?? item.set.verbose ?? ''
     return { replies: [`已切换到 ${desc}`], set: item.set }

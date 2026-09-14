@@ -5,11 +5,13 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import { parseCodexLine, initialCodexState } from './codex-parse.js'
-import type { BackendAdapter, RunningTask, StartTaskInput, TaskEvent, TaskResult } from './types.js'
+import { NO_EVENT_TIMEOUT_MS, type BackendAdapter, type RunningTask, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
 
 export interface CodexAdapterOptions {
   bin?: string
   sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access'
+  /** liveness 兜底超时（毫秒），测试可注入小值 */
+  noEventMs?: number
 }
 
 interface CodexModelCatalogEntry {
@@ -23,12 +25,14 @@ export class CodexAdapter implements BackendAdapter {
   readonly name = 'codex'
   private readonly bin: string
   private readonly sandbox: string
+  private readonly noEventMs: number
   private catalogCache?: CodexModelCatalogEntry[]
   private catalogFetchedAt?: string
 
   constructor(options: CodexAdapterOptions = {}) {
     this.bin = options.bin ?? process.env.CODEX_BIN ?? 'codex'
     this.sandbox = options.sandbox ?? 'workspace-write'
+    this.noEventMs = options.noEventMs ?? NO_EVENT_TIMEOUT_MS
   }
 
   /** 读取 codex 模型 catalog（~/.codex/models_cache.json），结构变化时降级为空。 */
@@ -107,8 +111,19 @@ export class CodexAdapter implements BackendAdapter {
     let stderr = ''
     child.stderr!.on('data', (d: Buffer) => { stderr += d.toString() })
 
+    // liveness 兜底：长时间无任何事件则报错并杀进程
+    const liveness = setInterval(() => {
+      if (produced) return
+      const idleMin = Math.floor((Date.now() - state.lastEventAt) / 60_000)
+      if (Date.now() - state.lastEventAt > this.noEventMs) {
+        push({ type: 'error', message: `任务超过 ${idleMin} 分钟无事件，可能挂起，已终止` })
+        child.kill('SIGTERM')
+      }
+    }, 30_000)
+
     const done = new Promise<TaskResult>((resolve) => {
       child.on('close', (code) => {
+        clearInterval(liveness)
         close()
         const ok = code === 0 && state.sawTurnCompleted && !state.lastError
         resolve({

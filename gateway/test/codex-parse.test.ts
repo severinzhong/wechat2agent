@@ -46,4 +46,10 @@ describe('parseCodexLine', () => {
     const r = parseCodexLine(line, initialCodexState())
     expect(r.events).toEqual([{ type: 'progress', message: expect.stringContaining('command_execution') }])
   })
+
+  it('updates lastEventAt on each parsed line', () => {
+    const before = Date.now()
+    const r = parseCodexLine(fixture[0]!, initialCodexState())
+    expect(r.state.lastEventAt).toBeGreaterThanOrEqual(before)
+  })
 })

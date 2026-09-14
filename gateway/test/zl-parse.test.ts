@@ -41,4 +41,10 @@ describe('parseZlLine', () => {
     expect(state.steps).toBe(1)
     expect(state.sawStepFinish).toBe(true)
   })
+
+  it('updates lastEventAt on each parsed line', () => {
+    const before = Date.now()
+    const r = parseZlLine(fixture[0]!, initialZlState())
+    expect(r.state.lastEventAt).toBeGreaterThanOrEqual(before)
+  })
 })

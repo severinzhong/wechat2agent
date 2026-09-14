@@ -42,3 +42,12 @@ export interface BackendAdapter {
   /** 模型列表的附加说明（如缓存日期），展示在 /model 菜单中 */
   modelListNote?(): string | undefined
 }
+
+/** adapter 可选的生命周期钩子（网关注入，用于基础设施异常通知） */
+export interface AdapterHooks {
+  /** 底层服务进程异常退出（如 zl serve 被杀） */
+  onServeDead?(message: string): void
+}
+
+/** 任务的 liveness 兜底：连续无事件超过该毫秒数即报错（默认 5 分钟） */
+export const NO_EVENT_TIMEOUT_MS = 300_000

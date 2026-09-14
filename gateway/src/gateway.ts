@@ -134,16 +134,27 @@ export class Gateway {
 
     let pendingLines: string[] = []
     let flushTimer: NodeJS.Timeout | undefined
+    let lastFlushAt = 0
+    const FLUSH_COALESCE_MS = 500
+    const MIN_FLUSH_INTERVAL_MS = 30_000
+    const MAX_FLUSH_LINES = 10
     const flush = async () => {
       flushTimer = undefined
       if (pendingLines.length === 0) return
-      const text = pendingLines.join('\n')
+      let lines = pendingLines
       pendingLines = []
-      await this.deps.bot.send(userId, text).catch((err) => console.error('progress send failed:', err))
+      const omitted = lines.length - MAX_FLUSH_LINES
+      if (omitted > 0) {
+        lines = [...lines.slice(0, MAX_FLUSH_LINES), `…（本次合并省略 ${omitted} 条）`]
+      }
+      lastFlushAt = Date.now()
+      await this.deps.bot.send(userId, lines.join('\n')).catch((err) => console.error('progress send failed:', err))
     }
     const enqueue = (line: string) => {
       pendingLines.push(line)
-      if (!flushTimer) flushTimer = setTimeout(() => void flush(), 500)
+      if (flushTimer) return
+      const wait = Math.max(FLUSH_COALESCE_MS, MIN_FLUSH_INTERVAL_MS - (Date.now() - lastFlushAt))
+      flushTimer = setTimeout(() => void flush(), wait)
     }
 
     const consume = (async () => {

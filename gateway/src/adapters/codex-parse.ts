@@ -6,10 +6,12 @@ export interface CodexParseState {
   sawTurnCompleted: boolean
   /** turn.failed 的错误信息（用于失败时透传给用户） */
   lastError?: string
+  /** 最后一个事件的时间戳（liveness 检测用） */
+  lastEventAt: number
 }
 
 export function initialCodexState(): CodexParseState {
-  return { finalText: '', sawTurnCompleted: false }
+  return { finalText: '', sawTurnCompleted: false, lastEventAt: Date.now() }
 }
 
 interface CodexEvent {
@@ -31,7 +33,7 @@ export function parseCodexLine(
   } catch {
     return { events: [], state }
   }
-  const next = { ...state }
+  const next = { ...state, lastEventAt: Date.now() }
   const events: TaskEvent[] = []
 
   if (e.type === 'thread.started' && e.thread_id) {

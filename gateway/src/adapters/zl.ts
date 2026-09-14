@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import readline from 'node:readline'
 import { randomUUID } from 'node:crypto'
 import { parseZlLine, initialZlState } from './zl-parse.js'
-import type { BackendAdapter, RunningTask, StartTaskInput, TaskEvent, TaskResult } from './types.js'
+import { NO_EVENT_TIMEOUT_MS, type AdapterHooks, type BackendAdapter, type RunningTask, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
 
 /** 管理单 workspace 的 zl serve 实例（server 与工作目录绑定，见 docs/research.md 5.3）。 */
 export class ZlServerManager {
@@ -12,6 +12,7 @@ export class ZlServerManager {
   constructor(
     private readonly workspace: string,
     private readonly bin: string = process.env.ZL_BIN ?? 'zl',
+    private readonly hooks: AdapterHooks = {},
   ) {}
 
   async ensureServer(): Promise<string> {
@@ -35,6 +36,12 @@ export class ZlServerManager {
         reject(new Error(`zl serve exited early: ${code}`))
       })
     })
+    // serve 启动后注册死亡检测：清除缓存 url，并通知网关（server 死亡会导致所有 attach 的 run 挂起）
+    child.on('exit', (code) => {
+      this.url = undefined
+      this.server = undefined
+      this.hooks.onServeDead?.(`zl serve 退出（code ${code}）`)
+    })
     return this.url
   }
 
@@ -52,6 +59,7 @@ export class ZlAdapter implements BackendAdapter {
   constructor(
     private readonly serverManager: ZlServerManager,
     private readonly bin: string = process.env.ZL_BIN ?? 'zl',
+    private readonly noEventMs: number = NO_EVENT_TIMEOUT_MS,
   ) {}
 
   async listModels(): Promise<string[]> {
@@ -111,8 +119,19 @@ export class ZlAdapter implements BackendAdapter {
     let stderr = ''
     child.stderr!.on('data', (d: Buffer) => { stderr += d.toString() })
 
+    // liveness 兜底：长时间无任何事件（如 serve 被杀导致 run 挂起）则报错并杀进程
+    const liveness = setInterval(() => {
+      if (produced) return
+      const idleMin = Math.floor((Date.now() - state.lastEventAt) / 60_000)
+      if (Date.now() - state.lastEventAt > this.noEventMs) {
+        push({ type: 'error', message: `任务超过 ${idleMin} 分钟无事件，可能挂起（如 serve 被杀），已终止` })
+        child.kill('SIGTERM')
+      }
+    }, 30_000)
+
     const done = new Promise<TaskResult>((resolve) => {
       child.on('close', (code) => {
+        clearInterval(liveness)
         close()
         resolve({
           ok: code === 0 && state.sawStepFinish,

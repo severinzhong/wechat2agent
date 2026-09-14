@@ -6,10 +6,12 @@ export interface ZlParseState {
   sawStepFinish: boolean
   /** 已完成的 step 数（step_finish 事件计数） */
   steps: number
+  /** 最后一个事件的时间戳（liveness 检测用） */
+  lastEventAt: number
 }
 
 export function initialZlState(): ZlParseState {
-  return { text: '', sawStepFinish: false, steps: 0 }
+  return { text: '', sawStepFinish: false, steps: 0, lastEventAt: Date.now() }
 }
 
 interface ZlEvent {
@@ -34,7 +36,7 @@ export function parseZlLine(
   } catch {
     return { events: [], state }
   }
-  const next = { ...state }
+  const next = { ...state, lastEventAt: Date.now() }
   const events: TaskEvent[] = []
 
   if (e.sessionID && !next.sessionId) next.sessionId = e.sessionID

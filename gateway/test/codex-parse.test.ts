@@ -20,7 +20,7 @@ describe('parseCodexLine', () => {
   })
 
   it('treats stream-reconnect error events as progress, not fatal', () => {
-    const errorLine = fixture.find((l) => l.includes('"type": "error"'))!
+    const errorLine = fixture.find((l) => l.startsWith('{"type":"error"'))!
     const r = parseCodexLine(errorLine, initialCodexState())
     expect(r.events).toEqual([{ type: 'progress', message: expect.stringContaining('Reconnecting') }])
   })

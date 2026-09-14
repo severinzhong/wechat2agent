@@ -1,0 +1,13 @@
+{
+  "name": "wechat2agent-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase 1 雏形：带斜杠命令的 echo bot（不接入真实 agent backend）",
+  "scripts": {
+    "start": "node echo-bot.mjs"
+  },
+  "dependencies": {
+    "@wechatbot/wechatbot": "^2.2.0"
+  }
+}

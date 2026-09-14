@@ -3,11 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Phase 1 雏形：带斜杠命令的 echo bot（不接入真实 agent backend）",
   "scripts": {
-    "start": "node echo-bot.mjs"
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@wechatbot/wechatbot": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
   }
 }

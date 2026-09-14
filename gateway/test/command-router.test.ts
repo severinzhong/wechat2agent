@@ -4,9 +4,10 @@ import { CommandRouter, type CommandContext } from '../src/commands/router.js'
 function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
   return {
     backend: 'codex',
-    model: 'gpt-5.2',
+    model: 'gpt-5.5',
     backends: ['codex', 'zl'],
-    modelsOf: (b: string) => (b === 'codex' ? ['gpt-5.2', 'gpt-5.2-codex'] : ['zhanlu/qwen3.7-max']),
+    modelsOf: (b: string) => (b === 'codex' ? ['gpt-5.5', 'gpt-5.4-mini'] : ['zhanlu/zhanlu/qwen3.7-max']),
+    effortsOf: (b: string) => (b === 'codex' ? ['low', 'medium', 'high', 'xhigh'] : ['minimal', 'low', 'medium', 'high', 'max']),
     taskActive: false,
     ...overrides,
   }
@@ -23,7 +24,7 @@ describe('CommandRouter', () => {
   it('/status shows backend and model', () => {
     const out = new CommandRouter().handle('/status', ctx())
     expect(out.replies[0]).toContain('codex')
-    expect(out.replies[0]).toContain('gpt-5.2')
+    expect(out.replies[0]).toContain('gpt-5.5')
   })
 
   it('/backend without args opens a numbered menu', () => {
@@ -72,8 +73,32 @@ describe('CommandRouter', () => {
 
   it('/model lists models of current backend', () => {
     const out = new CommandRouter().handle('/model', ctx())
-    expect(out.replies[0]).toContain('/1 gpt-5.2')
-    expect(out.replies[0]).toContain('/2 gpt-5.2-codex')
+    expect(out.replies[0]).toContain('/1 gpt-5.5')
+    expect(out.replies[0]).toContain('/2 gpt-5.4-mini')
+  })
+
+  it('/model without enumeratable models falls back to direct input hint', () => {
+    const out = new CommandRouter().handle('/model', ctx({ modelsOf: () => [] }))
+    expect(out.replies[0]).toContain('不提供模型枚举')
+    expect(out.menu).toBeUndefined()
+  })
+
+  it('/effort lists efforts of current backend', () => {
+    const out = new CommandRouter().handle('/effort', ctx())
+    expect(out.replies[0]).toContain('/1 low')
+    expect(out.replies[0]).toContain('/4 xhigh')
+  })
+
+  it('/effort high sets variant directly', () => {
+    const out = new CommandRouter().handle('/effort high', ctx())
+    expect(out.replies[0]).toContain('effort 已切换为 high')
+    expect(out.set?.variant).toBe('high')
+  })
+
+  it('/effort rejects unknown level when enumerable', () => {
+    const out = new CommandRouter().handle('/effort banana', ctx())
+    expect(out.replies[0]).toContain('未知 effort')
+    expect(out.set).toBeUndefined()
   })
 
   it('unknown command gets a hint', () => {

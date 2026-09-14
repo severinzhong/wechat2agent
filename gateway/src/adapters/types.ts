@@ -25,6 +25,8 @@ export interface StartTaskInput {
   prompt: string
   workspace: string
   model?: string
+  /** 推理强度：codex 映射为 model_reasoning_effort，zl 映射为 --variant */
+  effort?: string
   /** 同 backend 原生续接；跨 backend 不迁移 */
   nativeSessionId?: string
 }
@@ -33,5 +35,8 @@ export interface BackendAdapter {
   readonly name: string
   startTask(input: StartTaskInput): Promise<RunningTask>
   listModels(): Promise<string[]>
-  defaultModel(): string
+  /** undefined 表示不显式传模型参数，使用 backend 自身默认 */
+  defaultModel(): string | undefined
+  /** 当前（或指定）模型支持的推理强度列表；不支持枚举时返回空数组 */
+  listEfforts?(model?: string): Promise<string[]>
 }

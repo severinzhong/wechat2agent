@@ -29,4 +29,12 @@ describe('parseCodexLine', () => {
     const r = parseCodexLine('not json{', initialCodexState())
     expect(r.events).toEqual([])
   })
+
+  it('captures turn.failed error message for user-facing reporting', () => {
+    const line = '{"type":"turn.failed","error":{"message":"unexpected status 503: upstream unavailable"}}'
+    const r = parseCodexLine(line, initialCodexState())
+    expect(r.state.sawTurnCompleted).toBe(true)
+    expect(r.state.lastError).toContain('503')
+    expect(r.events).toEqual([{ type: 'error', message: expect.stringContaining('503') }])
+  })
 })

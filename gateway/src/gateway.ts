@@ -51,14 +51,18 @@ export class Gateway {
     text: string,
   ): Promise<void> {
     const modelMap: Record<string, string[]> = {}
+    const effortMap: Record<string, string[]> = {}
     for (const [name, adapter] of Object.entries(this.deps.adapters)) {
       modelMap[name] = await adapter.listModels()
+      effortMap[name] = (await adapter.listEfforts?.()) ?? []
     }
     const ctx = {
       backend: session.backend,
       model: session.model,
+      variant: session.variant,
       backends: Object.keys(this.deps.adapters),
       modelsOf: (b: string) => modelMap[b] ?? [],
+      effortsOf: (b: string, _model?: string) => effortMap[b] ?? [],
       taskActive: this.tasks.activeOf(msg.userId) !== undefined,
     }
 
@@ -81,13 +85,16 @@ export class Gateway {
   private async applyOutput(
     msg: IncomingMessage,
     session: GatewaySession,
-    out: { replies: string[]; set?: { backend?: string; model?: string } },
+    out: { replies: string[]; set?: { backend?: string; model?: string; variant?: string } },
   ): Promise<void> {
     if (out.set?.backend && out.set.backend !== session.backend) {
       session.backend = out.set.backend
+      // 切换 backend 时重置 model/variant（不同 backend 的取值集合不同）
       session.model = this.deps.adapters[session.backend]?.defaultModel()
+      session.variant = undefined
     }
     if (out.set?.model) session.model = out.set.model
+    if (out.set?.variant) session.variant = out.set.variant
     if (out.set) await this.deps.store.save(session)
     for (const reply of out.replies) await this.deps.bot.reply(msg, reply)
   }
@@ -107,10 +114,11 @@ export class Gateway {
       prompt: msg.text,
       workspace: this.deps.workspace,
       model: session.model,
+      effort: session.variant,
       nativeSessionId: session.nativeSessionIds[session.backend],
     })
 
-    await this.deps.bot.reply(msg, `已开始（${session.backend}${session.model ? `/${session.model}` : ''}）`)
+    await this.deps.bot.reply(msg, `已开始（${session.backend}${session.model ? `/${session.model}` : ''}${session.variant ? ` · ${session.variant}` : ''}）`)
 
     const result = await run.done
     if (result.nativeSessionId) {

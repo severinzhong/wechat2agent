@@ -4,6 +4,8 @@ export interface CodexParseState {
   threadId?: string
   finalText: string
   sawTurnCompleted: boolean
+  /** turn.failed 的错误信息（用于失败时透传给用户） */
+  lastError?: string
 }
 
 export function initialCodexState(): CodexParseState {
@@ -15,6 +17,7 @@ interface CodexEvent {
   thread_id?: string
   message?: string
   item?: { id?: string; type?: string; text?: string }
+  error?: { message?: string }
   usage?: Record<string, unknown>
 }
 
@@ -39,6 +42,10 @@ export function parseCodexLine(
     events.push({ type: 'text', text: e.item.text })
   } else if (e.type === 'turn.completed') {
     next.sawTurnCompleted = true
+  } else if (e.type === 'turn.failed') {
+    next.sawTurnCompleted = true
+    next.lastError = e.error?.message ?? e.message ?? 'turn failed'
+    events.push({ type: 'error', message: next.lastError })
   } else if (e.type === 'error' && e.message) {
     events.push({ type: 'progress', message: e.message })
   }

@@ -47,6 +47,7 @@ export class ZlServerManager {
 
 export class ZlAdapter implements BackendAdapter {
   readonly name = 'zl'
+  private modelsCache?: string[]
 
   constructor(
     private readonly serverManager: ZlServerManager,
@@ -54,11 +55,32 @@ export class ZlAdapter implements BackendAdapter {
   ) {}
 
   async listModels(): Promise<string[]> {
-    return ['zhanlu/qwen3.7-max', 'zhanlu/glm-5.2']
+    if (this.modelsCache) return this.modelsCache
+    const output = await new Promise<string>((resolve, reject) => {
+      const child = spawn(this.bin, ['models'], { stdio: ['ignore', 'pipe', 'pipe'] })
+      let out = ''
+      child.stdout!.on('data', (d: Buffer) => { out += d.toString() })
+      child.on('close', (code) => {
+        if (code === 0) resolve(out)
+        else reject(new Error(`zl models exited with code ${code}`))
+      })
+      child.on('error', reject)
+    })
+    this.modelsCache = output
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !l.startsWith('Available'))
+    return this.modelsCache
   }
 
-  defaultModel(): string {
-    return 'zhanlu/qwen3.7-max'
+  defaultModel(): string | undefined {
+    // 不显式传 -m，使用 zl server 配置的默认模型
+    return undefined
+  }
+
+  async listEfforts(): Promise<string[]> {
+    // zl 无 variant 枚举命令；--variant 为 provider-specific（help 示例：high/max/minimal）
+    return ['minimal', 'low', 'medium', 'high', 'max']
   }
 
   async startTask(input: StartTaskInput): Promise<RunningTask> {
@@ -67,6 +89,7 @@ export class ZlAdapter implements BackendAdapter {
       'run', '--attach', serverUrl, '--format', 'json', '--dir', input.workspace,
       ...(input.nativeSessionId ? ['--session', input.nativeSessionId] : []),
       ...(input.model ? ['-m', input.model] : []),
+      ...(input.effort ? ['--variant', input.effort] : []),
       input.prompt,
     ]
     const child = spawn(this.bin, args, { stdio: ['ignore', 'pipe', 'pipe'] })

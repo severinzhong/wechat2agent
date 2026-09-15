@@ -41,13 +41,13 @@ describe('CommandRouter', () => {
     const r = new CommandRouter()
     const menuOut = r.handle('/backend', ctx())
     const out = r.resolveMenu(2, menuOut.menu!, ctx())
-    expect(out.replies[0]).toContain('已切换到 zl')
+    expect(out.replies[0]).toContain('✅ → zl')
     expect(out.set?.backend).toBe('zl')
   })
 
   it('/backend zl switches directly without menu', () => {
     const out = new CommandRouter().handle('/backend zl', ctx())
-    expect(out.replies[0]).toContain('已切换到 zl')
+    expect(out.replies[0]).toContain('✅ backend → zl')
     expect(out.set?.backend).toBe('zl')
   })
 
@@ -69,7 +69,7 @@ describe('CommandRouter', () => {
   it('switching backend while task active is refused', () => {
     const r = new CommandRouter()
     const out = r.handle('/backend zl', ctx({ taskActive: true }))
-    expect(out.replies[0]).toContain('任务进行中')
+    expect(out.replies[0]).toContain('任务运行中')
     expect(out.set).toBeUndefined()
   })
 
@@ -81,13 +81,13 @@ describe('CommandRouter', () => {
 
   it('/model without enumeratable models falls back to direct input hint', () => {
     const out = new CommandRouter().handle('/model', ctx({ modelsOf: () => [] }))
-    expect(out.replies[0]).toContain('不提供模型枚举')
+    expect(out.replies[0]).toContain('模型不可枚举')
     expect(out.menu).toBeUndefined()
   })
 
   it('/model accepts unlisted model with soft warning (cache may be stale)', () => {
     const out = new CommandRouter().handle('/model gpt-5.6-sol', ctx())
-    expect(out.replies[0]).toContain('不在枚举列表中')
+    expect(out.replies[0]).toContain('不在枚举')
     expect(out.set?.model).toBe('gpt-5.6-sol')
   })
 
@@ -104,7 +104,7 @@ describe('CommandRouter', () => {
 
   it('/effort high sets variant directly', () => {
     const out = new CommandRouter().handle('/effort high', ctx())
-    expect(out.replies[0]).toContain('effort 已切换为 high')
+    expect(out.replies[0]).toContain('✅ effort → high')
     expect(out.set?.variant).toBe('high')
   })
 
@@ -120,7 +120,7 @@ describe('CommandRouter', () => {
     expect(out.replies[0]).toContain('/2 heartbeat')
     expect(out.replies[0]).toContain('/3 summary')
     expect(out.replies[0]).toContain('/4 detail')
-    expect(out.replies[0]).toContain('summary 摘要（每个事件一行，节流合并）（当前）')
+    expect(out.replies[0]).toContain('/3 summary 摘要 ←')
   })
 
   it('/verbose detail sets level directly', () => {
@@ -137,20 +137,20 @@ describe('CommandRouter', () => {
 
   it('/new resets native session', () => {
     const out = new CommandRouter().handle('/new', ctx())
-    expect(out.replies[0]).toContain('已开启新会话')
+    expect(out.replies[0]).toContain('🔁 新会话')
     expect(out.set?.resetNativeSession).toBe(true)
   })
 
   it('/new refused while task active', () => {
     const out = new CommandRouter().handle('/new', ctx({ taskActive: true }))
-    expect(out.replies[0]).toContain('任务进行中')
+    expect(out.replies[0]).toContain('任务运行中')
     expect(out.set).toBeUndefined()
   })
 
   it('menu choice with nativeSessionId replies resume confirmation', () => {
     const r = new CommandRouter()
     const out = r.resolveMenu(1, { items: [{ label: '回复 PHASE1_OK', set: { nativeSessionId: 'abc123' } }] }, ctx())
-    expect(out.replies[0]).toContain('已恢复 session')
+    expect(out.replies[0]).toContain('🔁 已恢复')
     expect(out.set?.nativeSessionId).toBe('abc123')
   })
 
@@ -161,7 +161,7 @@ describe('CommandRouter', () => {
 
   it('/workdir without args and no history shows hint', () => {
     const out = new CommandRouter().handle('/workdir', ctx())
-    expect(out.replies[0]).toContain('没有最近使用的目录')
+    expect(out.replies[0]).toContain('无历史目录')
     expect(out.menu).toBeUndefined()
   })
 
@@ -174,7 +174,7 @@ describe('CommandRouter', () => {
 
   it('/workdir refused while task active', () => {
     const out = new CommandRouter().handle('/workdir /tmp', ctx({ taskActive: true }))
-    expect(out.replies[0]).toContain('任务进行中')
+    expect(out.replies[0]).toContain('任务运行中')
     expect(out.set).toBeUndefined()
   })
 

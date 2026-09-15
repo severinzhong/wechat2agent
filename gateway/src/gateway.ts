@@ -43,7 +43,7 @@ export class Gateway {
 
   async handleMessage(msg: IncomingMessage): Promise<void> {
     if (msg.type !== 'text') {
-      await this.deps.bot.reply(msg, `暂不支持 ${msg.type} 消息（Phase 1 仅文本）`)
+      await this.deps.bot.reply(msg, `🤷 暂不支持 ${msg.type}（仅文本）`)
       return
     }
     const peer = msg.userId
@@ -126,7 +126,7 @@ export class Gateway {
     taskActive: boolean,
   ): Promise<void> {
     if (taskActive) {
-      await this.deps.bot.reply(msg, '任务进行中，请先 /cancel')
+      await this.deps.bot.reply(msg, '⏳ 任务运行中，/cancel 取消')
       return
     }
     const adapter = this.deps.adapters[session.backend]
@@ -136,18 +136,18 @@ export class Gateway {
     }
     const workspace = session.workspace ?? this.deps.workspace
     if (!workspace) {
-      await this.deps.bot.reply(msg, '还没有设置工作目录。先用 /workdir <路径> 设置（支持 ~）')
+      await this.deps.bot.reply(msg, '📂 先 /workdir <路径> 设置目录（支持 ~）')
       return
     }
     let sessions
     try {
       sessions = await adapter.listSessions(workspace)
     } catch (err) {
-      await this.deps.bot.reply(msg, `获取 session 列表失败：${(err as Error).message}`)
+      await this.deps.bot.reply(msg, `❌ 获取 session 列表失败：${(err as Error).message}`)
       return
     }
     if (sessions.length === 0) {
-      await this.deps.bot.reply(msg, `当前 workspace 没有可恢复的 ${session.backend} session`)
+      await this.deps.bot.reply(msg, `📭 当前目录没有可恢复的 ${session.backend} session`)
       return
     }
     const current = session.nativeSessionIds[session.backend]
@@ -158,23 +158,23 @@ export class Gateway {
         set: { nativeSessionId: s.id },
       })),
     }
-    await this.deps.bot.reply(msg, `恢复 ${session.backend} 的最近 session：\n${lines.join('\n')}\n/0 取消`)
+    await this.deps.bot.reply(msg, `🔁 恢复 ${session.backend} session：\n${lines.join('\n')}\n/0 ✋ 取消`)
   }
 
   private async handleHistory(msg: IncomingMessage, session: GatewaySession, turns: number): Promise<void> {
     const adapter = this.deps.adapters[session.backend]
     const nativeId = session.nativeSessionIds[session.backend]
     if (!nativeId) {
-      await this.deps.bot.reply(msg, `当前 backend（${session.backend}）还没有 session，先发一条消息开始`)
+      await this.deps.bot.reply(msg, `📭 当前 ${session.backend} 还没有 session，先发一条消息`)
       return
     }
     if (!adapter?.listHistory) {
-      await this.deps.bot.reply(msg, `${session.backend} 不支持历史读取`)
+      await this.deps.bot.reply(msg, `❓ ${session.backend} 不支持历史`)
       return
     }
     const workspace = session.workspace ?? this.deps.workspace
     if (!workspace) {
-      await this.deps.bot.reply(msg, '还没有设置工作目录')
+      await this.deps.bot.reply(msg, '📂 先 /workdir 设置目录')
       return
     }
     const n = Math.min(Math.max(1, turns), 10)
@@ -182,17 +182,17 @@ export class Gateway {
     try {
       pairs = await adapter.listHistory(nativeId, workspace, n)
     } catch (err) {
-      await this.deps.bot.reply(msg, `读取历史失败：${(err as Error).message}`)
+      await this.deps.bot.reply(msg, `❌ 读取历史失败：${(err as Error).message}`)
       return
     }
     if (pairs.length === 0) {
-      await this.deps.bot.reply(msg, '当前 session 没有对话记录')
+      await this.deps.bot.reply(msg, '📭 当前 session 无记录')
       return
     }
     const body = pairs
       .map((p) => `Q: ${truncate(p.user, 300)}\nA: ${truncate(p.assistant, 800)}`)
       .join('\n———\n')
-    await this.deps.bot.reply(msg, `最近 ${pairs.length} 轮（${session.backend}）：\n———\n${body}`)
+    await this.deps.bot.reply(msg, `📜 最近 ${pairs.length} 轮（${session.backend}）\n———\n${body}`)
   }
 
   private async applyOutput(
@@ -216,14 +216,14 @@ export class Gateway {
       const expanded = expandHome(out.set.workspace)
       const valid = await stat(expanded).then((s) => s.isDirectory()).catch(() => false)
       if (!valid) {
-        await this.deps.bot.reply(msg, `目录不存在：${expanded}`)
+        await this.deps.bot.reply(msg, `❌ 目录不存在：${expanded}`)
         return
       }
       session.workspace = expanded
       session.nativeSessionIds = {}
       const recent = [expanded, ...(session.recentWorkdirs ?? []).filter((d) => d !== expanded)]
       session.recentWorkdirs = recent.slice(0, 5)
-      out.replies = out.replies.map((r) => r.replace(out.set!.workspace!, expanded) + '\n（native session 已清空，/resume 可恢复该目录的 session）')
+      out.replies = out.replies.map((r) => r.replace(out.set!.workspace!, expanded) + '\n（session 已清空，/resume 恢复该目录）')
     }
     if (out.set?.backend && out.set.backend !== session.backend) {
       session.backend = out.set.backend
@@ -243,17 +243,17 @@ export class Gateway {
   private async runTask(msg: IncomingMessage, session: GatewaySession): Promise<void> {
     const adapter = this.deps.adapters[session.backend]
     if (!adapter) {
-      await this.deps.bot.reply(msg, `未知 backend: ${session.backend}`)
+      await this.deps.bot.reply(msg, `❓ 未知 backend ${session.backend}`)
       return
     }
     if (this.tasks.activeOf(msg.userId)) {
-      await this.deps.bot.reply(msg, '任务进行中，请先 /cancel')
+      await this.deps.bot.reply(msg, '⏳ 任务运行中，/cancel 取消')
       return
     }
 
     const workspace = session.workspace ?? this.deps.workspace
     if (!workspace) {
-      await this.deps.bot.reply(msg, '还没有设置工作目录。先用 /workdir <路径> 设置（支持 ~）')
+      await this.deps.bot.reply(msg, '📂 先 /workdir <路径> 设置目录（支持 ~）')
       return
     }
     // 持久化"最后一次使用的 workspace"（重启恢复现场），并记入最近列表
@@ -270,7 +270,7 @@ export class Gateway {
       nativeSessionId: session.nativeSessionIds[session.backend],
     })
 
-    await this.deps.bot.reply(msg, `已开始（${session.backend}${session.model ? `/${session.model}` : ''}${session.variant ? ` · ${session.variant}` : ''}）`)
+    await this.deps.bot.reply(msg, `🚀 ${session.backend}${session.model ? ` · ${session.model}` : ''}${session.variant ? ` · ${session.variant}` : ''}`)
 
     // 事件消费：进度按 verbose 档位分流；错误始终透传；summary/detail 以 500ms 窗口合并防止轰炸
     const userId = msg.userId
@@ -312,7 +312,7 @@ export class Gateway {
           if (verbose === 'summary') enqueue(`· ${e.message}`)
           else if (verbose === 'detail') enqueue(`[progress] ${e.message}`)
         } else if (e.type === 'error') {
-          await this.deps.bot.send(userId, `任务报错：${e.message}`).catch((err) => console.error('error notify failed:', err))
+          await this.deps.bot.send(userId, `⚠️ ${e.message}`).catch((err) => console.error('error notify failed:', err))
         } else if (e.type === 'text') {
           // 中间过程文本（模型逐步输出）：summary 档发一行摘要，detail 档发截断内容
           if (verbose === 'summary') {
@@ -329,7 +329,7 @@ export class Gateway {
       verbose === 'heartbeat'
         ? setInterval(() => {
             const mins = Math.max(1, Math.round((Date.now() - startedAt) / 60_000))
-            const text = `任务运行中（约 ${mins} 分钟，${progressCount} 个进度事件）\n最近：${lastAction || '等待模型输出'}\n/cancel 取消`
+            const text = `⏳ ${mins} 分钟 · ${progressCount} 步\n🔧 ${lastAction || '等待模型输出'}\n✋ /cancel`
             this.deps.bot.send(userId, text).catch((err) => console.error('heartbeat send failed:', err))
           }, this.deps.heartbeatMs)
         : undefined
@@ -344,9 +344,9 @@ export class Gateway {
       await this.deps.store.save(session)
     }
     if (result.ok) {
-      await this.deps.bot.send(msg.userId, result.finalText || '(任务完成，无文本输出)')
+      await this.deps.bot.send(msg.userId, result.finalText || '✅ 完成（无文本输出）')
     } else {
-      await this.deps.bot.send(msg.userId, `任务失败: ${result.error ?? '未知错误'}`)
+      await this.deps.bot.send(msg.userId, `❌ ${result.error ?? '未知错误'}`)
     }
   }
 

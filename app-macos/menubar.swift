@@ -65,6 +65,20 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   private func refreshIcon() {
     let running = status?.ok == true
+    // 自定义 template 图标（Resources/menubar-36.png），开发模式 loose binary 无资源时回退 SF Symbol
+    if let res = Bundle.main.resourceURL {
+      let iconPath = res.appendingPathComponent("menubar-36.png").path
+      if let img = NSImage(contentsOfFile: iconPath) {
+        img.isTemplate = true
+        statusItem.button?.image = img
+        statusItem.button?.image?.accessibilityDescription = "wechat2agent"
+        statusItem.button?.title = ""
+        // template 图标无法用颜色区分状态：以透明度区分（运行 1.0 / 停止 0.35）
+        statusItem.button?.alphaValue = running ? 1.0 : 0.35
+        return
+      }
+    }
+    statusItem.button?.alphaValue = 1.0
     let name = running ? "bolt.horizontal.fill" : "bolt.horizontal"
     if let img = NSImage(systemSymbolName: name, accessibilityDescription: "wechat2agent") {
       statusItem.button?.image = img

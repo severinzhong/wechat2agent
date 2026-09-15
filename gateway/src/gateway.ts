@@ -22,9 +22,11 @@ interface PeerState {
 }
 
 function expandHome(p: string): string {
-  if (p === '~') return os.homedir()
-  if (p.startsWith('~/')) return os.homedir() + p.slice(1)
-  return p
+  // 兼容 ASCII ~ 与全角 ～（U+FF5E，手机输入法常见）
+  const normalized = p.replace(/^～/, '~')
+  if (normalized === '~') return os.homedir()
+  if (normalized.startsWith('~/')) return os.homedir() + normalized.slice(1)
+  return normalized
 }
 
 export class Gateway {

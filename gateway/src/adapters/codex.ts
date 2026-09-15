@@ -5,7 +5,7 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import { parseCodexLine, initialCodexState } from './codex-parse.js'
-import { NO_EVENT_TIMEOUT_MS, type BackendAdapter, type RunningTask, type SessionSummary, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
+import { NO_EVENT_TIMEOUT_MS, type BackendAdapter, type HistoryTurn, type RunningTask, type SessionSummary, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
 
 export interface CodexAdapterOptions {
   bin?: string
@@ -77,6 +77,47 @@ export class CodexAdapter implements BackendAdapter {
   defaultModel(): string | undefined {
     // 不显式传 -m，使用 codex 配置的默认模型
     return undefined
+  }
+
+  /**
+   * 读取指定 session 的最近 N 轮对话。
+   * rollout 文件按 session_id 定位；过滤系统注入（<environment_context> 等以 '<' 开头的内容）。
+   */
+  async listHistory(sessionId: string, _workspace: string, turns: number): Promise<HistoryTurn[]> {
+    const home = process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex')
+    const file = await findRolloutById(path.join(home, 'sessions'), sessionId)
+    if (!file) return []
+    const content = await readFile(file, 'utf8')
+    const pairs: HistoryTurn[] = []
+    let pendingUser: string | undefined
+    let pendingAssistant = ''
+    const settle = () => {
+      if (pendingUser !== undefined && pendingAssistant) {
+        pairs.push({ user: pendingUser, assistant: pendingAssistant })
+      }
+      pendingUser = undefined
+      pendingAssistant = ''
+    }
+    for (const line of content.split('\n')) {
+      if (!line.trim()) continue
+      let e: { type?: string; payload?: { type?: string; role?: string; content?: { text?: string }[] } }
+      try {
+        e = JSON.parse(line)
+      } catch {
+        continue
+      }
+      if (e.type !== 'response_item' || e.payload?.type !== 'message') continue
+      const text = (e.payload.content ?? []).map((c) => c.text ?? '').join('').trim()
+      if (!text || text.startsWith('<')) continue  // 跳过系统注入
+      if (e.payload.role === 'user') {
+        settle()          // 新 user 出现：结算上一轮
+        pendingUser = text
+      } else if (e.payload.role === 'assistant' && pendingUser !== undefined) {
+        pendingAssistant = text  // 同轮多条 assistant message：后者覆盖（最终答案为准）
+      }
+    }
+    settle()
+    return pairs.slice(-turns)
   }
 
   /**
@@ -214,4 +255,18 @@ async function readSessionMeta(file: string): Promise<{ id: string; cwd: string;
   } catch {
     return undefined
   }
+}
+
+/** 在 sessions 目录树中按 session id 定位 rollout 文件（文件名尾部即 id） */
+async function findRolloutById(dir: string, sessionId: string): Promise<string | undefined> {
+  for (const y of await readdirSafe(dir)) {
+    for (const m of await readdirSafe(path.join(dir, y))) {
+      for (const d of await readdirSafe(path.join(dir, y, m))) {
+        for (const f of await readdirSafe(path.join(dir, y, m, d))) {
+          if (f.endsWith(`-${sessionId}.jsonl`)) return path.join(dir, y, m, d, f)
+        }
+      }
+    }
+  }
+  return undefined
 }

@@ -43,6 +43,8 @@ export interface BackendAdapter {
   modelListNote?(): string | undefined
   /** 列出当前 workspace 的最近 native session（用于 /resume） */
   listSessions?(workspace: string): Promise<SessionSummary[]>
+  /** 读取指定 native session 的最近 N 轮对话（用于 /history） */
+  listHistory?(sessionId: string, workspace: string, turns: number): Promise<HistoryTurn[]>
 }
 
 /** adapter 可选的生命周期钩子（网关注入，用于基础设施异常通知） */
@@ -59,4 +61,10 @@ export interface SessionSummary {
   id: string
   title: string
   updatedAt?: string
+}
+
+/** 一轮对话（/history 用）：user 提问 + assistant 最终回答 */
+export interface HistoryTurn {
+  user: string
+  assistant: string
 }

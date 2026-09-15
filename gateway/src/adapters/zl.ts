@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import readline from 'node:readline'
 import { randomUUID } from 'node:crypto'
 import { parseZlLine, initialZlState } from './zl-parse.js'
-import { NO_EVENT_TIMEOUT_MS, type AdapterHooks, type BackendAdapter, type RunningTask, type SessionSummary, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
+import { NO_EVENT_TIMEOUT_MS, type AdapterHooks, type BackendAdapter, type HistoryTurn, type RunningTask, type SessionSummary, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
 
 /** 剔除从父进程（如 IDE 派生 shell）继承的 server 认证变量，保证回环 server 无 basic auth、行为一致。 */
 function cleanEnv(): NodeJS.ProcessEnv {
@@ -104,6 +104,43 @@ export class ZlAdapter implements BackendAdapter {
     if (!res.ok) throw new Error(`GET /session failed: HTTP ${res.status}`)
     const list = (await res.json()) as { id: string; title?: string }[]
     return list.slice(0, 5).map((s) => ({ id: s.id, title: s.title || s.id.slice(0, 14) }))
+  }
+
+  /** 读取指定 session 的最近 N 轮对话（server API；assistant 取每条 message 的 text parts 拼接）。 */
+  async listHistory(sessionId: string, workspace: string, turns: number): Promise<HistoryTurn[]> {
+    const base = await this.serverManager.ensureServer(workspace)
+    const res = await fetch(`${base}/session/${sessionId}/message`)
+    if (!res.ok) throw new Error(`GET /session/:id/message failed: HTTP ${res.status}`)
+    const msgs = (await res.json()) as {
+      info?: { role?: string }
+      parts?: { type?: string; text?: string }[]
+    }[]
+    const pairs: HistoryTurn[] = []
+    let pendingUser: string | undefined
+    let pendingAssistant = ''
+    const settle = () => {
+      if (pendingUser !== undefined && pendingAssistant) {
+        pairs.push({ user: pendingUser, assistant: pendingAssistant })
+      }
+      pendingUser = undefined
+      pendingAssistant = ''
+    }
+    for (const m of msgs) {
+      const text = (m.parts ?? [])
+        .filter((p) => p.type === 'text')
+        .map((p) => p.text ?? '')
+        .join('')
+        .trim()
+      if (!text) continue
+      if (m.info?.role === 'user') {
+        settle()
+        pendingUser = text
+      } else if (m.info?.role === 'assistant' && pendingUser !== undefined) {
+        pendingAssistant = text  // 同轮多条 assistant message：后者覆盖（最终答案为准）
+      }
+    }
+    settle()
+    return pairs.slice(-turns)
   }
 
   async startTask(input: StartTaskInput): Promise<RunningTask> {

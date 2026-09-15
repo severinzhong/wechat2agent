@@ -29,6 +29,11 @@ function expandHome(p: string): string {
   return normalized
 }
 
+function truncate(s: string, max: number): string {
+  const t = s.replace(/\s+$/g, '')
+  return t.length > max ? t.slice(0, max) + '…' : t
+}
+
 export class Gateway {
   private readonly router = new CommandRouter()
   private readonly tasks = new TaskManager()
@@ -99,6 +104,14 @@ export class Gateway {
       return
     }
 
+    // /history [N] 需要 adapter 的异步历史读取，由 gateway 直接处理
+    const historyMatch = /^\/history(?:\s+(\d+))?$/.exec(text)
+    if (historyMatch) {
+      state.menu = undefined
+      await this.handleHistory(msg, session, historyMatch[1] ? Number(historyMatch[1]) : 1)
+      return
+    }
+
     // 其他命令：旧菜单静默作废
     state.menu = undefined
     const out = this.router.handle(text, ctx)
@@ -146,6 +159,40 @@ export class Gateway {
       })),
     }
     await this.deps.bot.reply(msg, `恢复 ${session.backend} 的最近 session：\n${lines.join('\n')}\n/0 取消`)
+  }
+
+  private async handleHistory(msg: IncomingMessage, session: GatewaySession, turns: number): Promise<void> {
+    const adapter = this.deps.adapters[session.backend]
+    const nativeId = session.nativeSessionIds[session.backend]
+    if (!nativeId) {
+      await this.deps.bot.reply(msg, `当前 backend（${session.backend}）还没有 session，先发一条消息开始`)
+      return
+    }
+    if (!adapter?.listHistory) {
+      await this.deps.bot.reply(msg, `${session.backend} 不支持历史读取`)
+      return
+    }
+    const workspace = session.workspace ?? this.deps.workspace
+    if (!workspace) {
+      await this.deps.bot.reply(msg, '还没有设置工作目录')
+      return
+    }
+    const n = Math.min(Math.max(1, turns), 10)
+    let pairs
+    try {
+      pairs = await adapter.listHistory(nativeId, workspace, n)
+    } catch (err) {
+      await this.deps.bot.reply(msg, `读取历史失败：${(err as Error).message}`)
+      return
+    }
+    if (pairs.length === 0) {
+      await this.deps.bot.reply(msg, '当前 session 没有对话记录')
+      return
+    }
+    const body = pairs
+      .map((p) => `Q: ${truncate(p.user, 300)}\nA: ${truncate(p.assistant, 800)}`)
+      .join('\n———\n')
+    await this.deps.bot.reply(msg, `最近 ${pairs.length} 轮（${session.backend}）：\n———\n${body}`)
   }
 
   private async applyOutput(

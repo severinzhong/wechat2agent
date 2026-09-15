@@ -1,7 +1,8 @@
-import { WeChatBot } from '@wechatbot/wechatbot'
+import { WeChatBot, createLogger } from '@wechatbot/wechatbot'
 import path from 'node:path'
 import { loadConfig } from './config.js'
 import { acquireInstanceLock } from './lock.js'
+import { GatewayLog, TeeTransport } from './log.js'
 import { StatusServer } from './status-server.js'
 import { FileSessionStore } from './sessions/file-store.js'
 import { CodexAdapter } from './adapters/codex.js'
@@ -10,15 +11,19 @@ import { Gateway } from './gateway.js'
 
 const config = loadConfig()
 
+const gwLog = new GatewayLog(config.storageDir)
+await gwLog.rotate()
+gwLog.say('info', 'gateway 启动')
+
 const releaseLock = await acquireInstanceLock(config.storageDir).catch((err: Error) => {
-  console.error(err.message)
+  gwLog.say('error', err.message)
   process.exit(1)
 })
 
 const bot = new WeChatBot({
   storage: 'file',
   storageDir: path.join(config.storageDir, 'ilink'),
-  logLevel: config.logLevel,
+  logger: createLogger({ level: config.logLevel, transport: new TeeTransport(gwLog) }),
   botAgent: 'wechat2agent-gateway/0.1',
 })
 
@@ -37,11 +42,11 @@ const gateway = new Gateway({
 
 bot.onMessage((msg) => {
   gateway.handleMessage(msg).catch((err) => {
-    console.error('handleMessage failed:', err)
+    gwLog.say('error', `handleMessage failed: ${err}`)
   })
 })
-bot.on('session:expired', () => console.error('iLink 会话过期，请重启并重新扫码'))
-bot.on('error', (err) => console.error('bot error:', err))
+bot.on('session:expired', () => gwLog.say('error', 'iLink 会话过期，请重启并重新扫码'))
+bot.on('error', (err) => gwLog.say('error', `bot error: ${err}`))
 
 process.on('SIGINT', async () => {
   await zlServer.stop()
@@ -64,25 +69,25 @@ async function loginWithRetry(retries = 3) {
     try {
       return await bot.login({
         callbacks: {
-          onQrUrl: (url) => console.log(`\n请用微信扫码登录:\n${url}\n`),
-          onScanned: () => console.log('已扫码，请在微信中确认…'),
+          onQrUrl: (url) => gwLog.say('info', `请用微信扫码登录: ${url}`),
+          onScanned: () => gwLog.say('info', '已扫码，请在微信中确认…'),
         },
       })
     } catch (err) {
       if (attempt >= retries) throw err
-      console.warn(`登录第 ${attempt} 次失败（${(err as Error).message}），重试…`)
+      gwLog.say('warn', `登录第 ${attempt} 次失败（${(err as Error).message}），重试…`)
     }
   }
 }
 
 const creds = await loginWithRetry()
-console.log(`已登录: ${creds.accountId}`)
-console.log(`默认 workspace: ${config.workspace ?? '(未设置，通过微信 /workdir 指定)'}`)
+gwLog.say('info', `已登录: ${creds.accountId}`)
+gwLog.say('info', `默认 workspace: ${config.workspace ?? '(未设置)'}；日志: ${gwLog.file}`)
 
 const startedAt = Date.now()
 const statusServer = new StatusServer(config.storageDir, () =>
   gateway.getStatus(creds.accountId, (Date.now() - startedAt) / 1000),
 )
-await statusServer.start().then((port) => console.log(`状态端点: http://127.0.0.1:${port}/status`))
+await statusServer.start().then((port) => gwLog.say('info', `状态端点: http://127.0.0.1:${port}/status`))
 await bot.start()
-console.log('gateway 运行中，/help 查看命令')
+gwLog.say('info', 'gateway 运行中，/help 查看命令')

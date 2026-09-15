@@ -114,7 +114,7 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
   @objc private func startGateway() {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-    p.arguments = ["-lc", "cd '\(GATEWAY_DIR)' && npm start > '\(LOG_FILE)' 2>&1"]
+    p.arguments = ["-lc", "cd '\(GATEWAY_DIR)' && npm start"]
     try? p.run()
     // 启动是异步的（登录、端口分配），5 秒后自动刷新
   }
@@ -126,6 +126,10 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
   }
 
   @objc private func openLog() {
+    // 文件可能不存在（gateway 尚未写过日志）：先创建再打开
+    if !FileManager.default.fileExists(atPath: LOG_FILE) {
+      FileManager.default.createFile(atPath: LOG_FILE, contents: Data())
+    }
     NSWorkspace.shared.open(URL(fileURLWithPath: LOG_FILE))
   }
 

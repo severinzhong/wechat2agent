@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { GatewaySession, SessionStore } from './types.js'
 
@@ -27,5 +27,24 @@ export class FileSessionStore implements SessionStore {
       encoding: 'utf8',
       mode: 0o600,
     })
+  }
+
+  async list(): Promise<GatewaySession[]> {
+    let files: string[]
+    try {
+      files = await readdir(this.dir)
+    } catch {
+      return []
+    }
+    const out: GatewaySession[] = []
+    for (const f of files) {
+      if (!f.endsWith('.json')) continue
+      try {
+        out.push(JSON.parse(await readFile(path.join(this.dir, f), 'utf8')) as GatewaySession)
+      } catch {
+        // 跳过损坏文件
+      }
+    }
+    return out
   }
 }

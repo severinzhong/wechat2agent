@@ -317,4 +317,34 @@ export class Gateway {
     await this.deps.store.save(session)
     return session
   }
+
+  /** 面板状态查询（StatusServer 数据源）。 */
+  async getStatus(accountId: string | undefined, uptimeSec: number): Promise<{
+    ok: boolean
+    accountId?: string
+    uptimeSec: number
+    peers: {
+      peer: string
+      backend: string
+      model?: string
+      variant?: string
+      workdir?: string
+      taskActive: boolean
+    }[]
+  }> {
+    const sessions = await this.deps.store.list()
+    return {
+      ok: true,
+      accountId,
+      uptimeSec: Math.round(uptimeSec),
+      peers: sessions.map((s) => ({
+        peer: s.wechatPeer,
+        backend: s.backend,
+        model: s.model,
+        variant: s.variant,
+        workdir: s.workspace ?? this.deps.workspace,
+        taskActive: this.tasks.activeOf(s.wechatPeer) !== undefined,
+      })),
+    }
+  }
 }

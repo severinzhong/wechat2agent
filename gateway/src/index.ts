@@ -2,6 +2,7 @@ import { WeChatBot } from '@wechatbot/wechatbot'
 import path from 'node:path'
 import { loadConfig } from './config.js'
 import { acquireInstanceLock } from './lock.js'
+import { StatusServer } from './status-server.js'
 import { FileSessionStore } from './sessions/file-store.js'
 import { CodexAdapter } from './adapters/codex.js'
 import { ZlAdapter, ZlServerManager } from './adapters/zl.js'
@@ -45,6 +46,7 @@ bot.on('error', (err) => console.error('bot error:', err))
 process.on('SIGINT', async () => {
   await zlServer.stop()
   bot.stop()
+  await statusServer.stop()
   await releaseLock()
   process.exit(0)
 })
@@ -52,6 +54,7 @@ process.on('SIGINT', async () => {
 process.on('SIGTERM', async () => {
   await zlServer.stop()
   bot.stop()
+  await statusServer.stop()
   await releaseLock()
   process.exit(0)
 })
@@ -75,5 +78,11 @@ async function loginWithRetry(retries = 3) {
 const creds = await loginWithRetry()
 console.log(`已登录: ${creds.accountId}`)
 console.log(`默认 workspace: ${config.workspace ?? '(未设置，通过微信 /workdir 指定)'}`)
+
+const startedAt = Date.now()
+const statusServer = new StatusServer(config.storageDir, () =>
+  gateway.getStatus(creds.accountId, (Date.now() - startedAt) / 1000),
+)
+await statusServer.start().then((port) => console.log(`状态端点: http://127.0.0.1:${port}/status`))
 await bot.start()
 console.log('gateway 运行中，/help 查看命令')

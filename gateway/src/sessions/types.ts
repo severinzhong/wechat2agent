@@ -21,4 +21,5 @@ export interface GatewaySession {
 export interface SessionStore {
   load(peer: string): Promise<GatewaySession | undefined>
   save(session: GatewaySession): Promise<void>
+  list(): Promise<GatewaySession[]>
 }

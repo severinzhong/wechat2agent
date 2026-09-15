@@ -1,11 +1,12 @@
 import AppKit
 
 // wechat2agent 菜单栏面板
-// 编译: swiftc -O app-macos/menubar.swift -o app-macos/wechat2agent-panel
-// 运行: ./app-macos/wechat2agent-panel（无 Dock 图标，仅菜单栏）
+// 构建: app-macos/build.sh（产出 dist/WeChat2Agent.app）
+// 开发期直接跑: swiftc -O app-macos/menubar.swift -o /tmp/panel && /tmp/panel
+//   （非 bundle 模式下面板从 ~/.wechat2agent/gateway-home 读项目路径，用 npm start 启动）
 
-let GATEWAY_DIR = "/Users/zhong/Code/wechat2agent/gateway"
 let STORAGE_DIR = NSHomeDirectory() + "/.wechat2agent"
+let GATEWAY_HOME_FILE = STORAGE_DIR + "/gateway-home"
 let LOCK_FILE = STORAGE_DIR + "/gateway.lock"
 let PORT_FILE = STORAGE_DIR + "/gateway.port"
 let LOG_FILE = STORAGE_DIR + "/gateway.log"
@@ -111,12 +112,40 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   // MARK: - 操作
 
+  /// 启动命令：优先 app bundle 内嵌的 node + gateway.mjs；
+  /// 开发模式（loose binary）读 ~/.wechat2agent/gateway-home 指向的项目目录，用 npm start。
   @objc private func startGateway() {
-    let p = Process()
-    p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-    p.arguments = ["-lc", "cd '\(GATEWAY_DIR)' && npm start"]
-    try? p.run()
-    // 启动是异步的（登录、端口分配），5 秒后自动刷新
+    if let res = Bundle.main.resourceURL {
+      let node = res.appendingPathComponent("node").path
+      let script = res.appendingPathComponent("gateway.mjs").path
+      if FileManager.default.fileExists(atPath: node), FileManager.default.fileExists(atPath: script) {
+        let p = Process()
+        // 经 login shell 启动以继承用户 PATH（codex/zl 在 nvm/homebrew 等位置）
+        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        p.arguments = ["-lc", "'\(node)' '\(script)'"]
+        try? p.run()
+        return
+      }
+    }
+    // 开发模式
+    if let home = try? String(contentsOfFile: GATEWAY_HOME_FILE, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+       !home.isEmpty {
+      let p = Process()
+      p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+      p.arguments = ["-lc", "cd '\(home)' && npm start"]
+      try? p.run()
+      return
+    }
+    // 找不到 gateway：写日志提示
+    let msg = "[\(Date())] 无法启动：未找到内嵌 gateway，也未配置 \(GATEWAY_HOME_FILE)\n"
+    if let data = msg.data(using: .utf8) {
+      if FileManager.default.fileExists(atPath: LOG_FILE),
+         let h = FileHandle(forWritingAtPath: LOG_FILE) {
+        h.seekToEndOfFile(); h.write(data); try? h.close()
+      } else {
+        FileManager.default.createFile(atPath: LOG_FILE, contents: data)
+      }
+    }
   }
 
   @objc private func stopGateway() {

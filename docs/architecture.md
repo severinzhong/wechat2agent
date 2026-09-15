@@ -245,11 +245,11 @@ wechat2agent/
 
 ### Phase 3：macOS 控制面
 
-- SwiftUI 菜单栏应用。
-- Gateway sidecar 管理。
+- SwiftUI 菜单栏应用。（已用单文件 Swift 脚本实现最小面板：app-macos/menubar.swift，含启动/停止/状态/日志入口）
+- Gateway sidecar 管理。（面板通过 ~/.wechat2agent/gateway.lock PID 管理）
 - Keychain。
 - 开机启动和系统通知。
-- 日志和状态查看。
+- 日志和状态查看。（面板「查看日志」→ ~/.wechat2agent/gateway.log）
 
 ### Phase 4：扩展
 

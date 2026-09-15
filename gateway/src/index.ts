@@ -1,12 +1,18 @@
 import { WeChatBot } from '@wechatbot/wechatbot'
 import path from 'node:path'
 import { loadConfig } from './config.js'
+import { acquireInstanceLock } from './lock.js'
 import { FileSessionStore } from './sessions/file-store.js'
 import { CodexAdapter } from './adapters/codex.js'
 import { ZlAdapter, ZlServerManager } from './adapters/zl.js'
 import { Gateway } from './gateway.js'
 
 const config = loadConfig()
+
+const releaseLock = await acquireInstanceLock(config.storageDir).catch((err: Error) => {
+  console.error(err.message)
+  process.exit(1)
+})
 
 const bot = new WeChatBot({
   storage: 'file',
@@ -39,6 +45,14 @@ bot.on('error', (err) => console.error('bot error:', err))
 process.on('SIGINT', async () => {
   await zlServer.stop()
   bot.stop()
+  await releaseLock()
+  process.exit(0)
+})
+
+process.on('SIGTERM', async () => {
+  await zlServer.stop()
+  bot.stop()
+  await releaseLock()
   process.exit(0)
 })
 

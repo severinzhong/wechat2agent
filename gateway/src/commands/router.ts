@@ -60,10 +60,15 @@ const VERBOSE_LABELS: Record<string, string> = {
 }
 
 const HELP = `🔀 /backend [名] 切换后端
+
 🧠 /model [名] 模型 · ⚡ /effort [级] 推理强度
+
 📂 /workdir [路径] 工作目录 · 🔁 /new 新会话 · /resume 恢复
+
 📜 /history [N] 最近 N 轮 · 📢 /verbose 过程反馈
+
 ✋ /cancel 取消任务
+
 菜单 /1 /2…选择 · /0 取消`
 
 export class CommandRouter {
@@ -79,7 +84,7 @@ export class CommandRouter {
       case '/status':
         return {
           replies: [
-            `📊 ${ctx.backend}${ctx.model ? ` · ${ctx.model}` : ''}${ctx.variant ? ` · ${ctx.variant}` : ''}\n📂 ${ctx.workdir}\n📢 ${ctx.verbose ?? 'heartbeat'} · ${ctx.taskActive ? '⏳ 任务运行中' : '💤 空闲'}`,
+            `📊 ${ctx.backend}${ctx.model ? ` · ${ctx.model}` : ''}${ctx.variant ? ` · ${ctx.variant}` : ''}\n\n📂 ${ctx.workdir}\n\n📢 ${ctx.verbose ?? 'heartbeat'} · ${ctx.taskActive ? '⏳ 任务运行中' : '💤 空闲'}`,
           ],
         }
       case '/backend':
@@ -101,7 +106,7 @@ export class CommandRouter {
         const models = ctx.modelsOf(ctx.backend)
         if (models.length === 0) {
           return {
-            replies: [`🧠 ${ctx.backend} 模型不可枚举\n当前: ${ctx.model ?? '默认'}\n直写 /model <名称>`],
+            replies: [`🧠 ${ctx.backend} 模型不可枚举\n\n当前: ${ctx.model ?? '默认'}\n\n直写 /model <名称>`],
           }
         }
         return {
@@ -116,7 +121,7 @@ export class CommandRouter {
         const efforts = ctx.effortsOf(ctx.backend, ctx.model)
         if (efforts.length === 0) {
           return {
-            replies: [`⚡ ${ctx.backend} 推理强度不可枚举\n当前: ${ctx.variant ?? '默认'}\n直写 /effort <等级>`],
+            replies: [`⚡ ${ctx.backend} 推理强度不可枚举\n\n当前: ${ctx.variant ?? '默认'}\n\n直写 /effort <等级>`],
           }
         }
         return {
@@ -148,7 +153,7 @@ export class CommandRouter {
         }
         const recent = ctx.recentWorkdirs
         if (recent.length === 0) {
-          return { replies: [`📂 当前：${ctx.workdir}\n无历史目录，直写 /workdir <路径>（支持 ~）`] }
+          return { replies: [`📂 当前：${ctx.workdir}\n\n无历史目录，直写 /workdir <路径>（支持 ~）`] }
         }
         return {
           replies: [
@@ -195,7 +200,7 @@ export class CommandRouter {
   private applyEffort(name: string, ctx: CommandContext): CommandOutput {
     const efforts = ctx.effortsOf(ctx.backend, ctx.model)
     if (efforts.length > 0 && !efforts.includes(name)) {
-      return { replies: [`❓ 未知 effort ${name}\n可选：\n${efforts.join('\n')}`] }
+      return { replies: [`❓ 未知 effort ${name}\n\n可选：\n\n${efforts.join('\n\n')}`] }
     }
     return { replies: [`✅ effort → ${name}`], set: { variant: name } }
   }
@@ -214,7 +219,7 @@ export class CommandRouter {
     if (models.length > 0 && !models.includes(name)) {
       // 枚举列表可能过期（如 codex models_cache.json），列表外模型软警告后允许直写
       return {
-        replies: [`⚠️ ${name} 不在枚举（缓存可能过期）\n✅ model → ${name}`],
+        replies: [`⚠️ ${name} 不在枚举（缓存可能过期）\n\n✅ model → ${name}`],
         set: { model: name },
       }
     }
@@ -224,5 +229,5 @@ export class CommandRouter {
 
 function menuText(title: string, labels: string[]): string {
   const lines = labels.map((label, i) => `/${i + 1} ${label}`)
-  return `${title}\n${lines.join('\n')}\n/0 ✋ 取消`
+  return `${title}\n\n${lines.join('\n\n')}\n\n/0 ✋ 取消`
 }

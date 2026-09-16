@@ -158,7 +158,7 @@ export class Gateway {
         set: { nativeSessionId: s.id },
       })),
     }
-    await this.deps.bot.reply(msg, `🔁 恢复 ${session.backend} session：\n${lines.join('\n')}\n/0 ✋ 取消`)
+    await this.deps.bot.reply(msg, `🔁 恢复 ${session.backend} session：\n\n${lines.join('\n\n')}\n\n/0 ✋ 取消`)
   }
 
   private async handleHistory(msg: IncomingMessage, session: GatewaySession, turns: number): Promise<void> {
@@ -190,9 +190,9 @@ export class Gateway {
       return
     }
     const body = pairs
-      .map((p) => `Q: ${truncate(p.user, 300)}\nA: ${truncate(p.assistant, 800)}`)
-      .join('\n———\n')
-    await this.deps.bot.reply(msg, `📜 最近 ${pairs.length} 轮（${session.backend}）\n———\n${body}`)
+      .map((p) => `Q: ${truncate(p.user, 300)}\n\nA: ${truncate(p.assistant, 800)}`)
+      .join('\n\n———\n\n')
+    await this.deps.bot.reply(msg, `📜 最近 ${pairs.length} 轮（${session.backend}）\n\n———\n\n${body}`)
   }
 
   private async applyOutput(
@@ -223,7 +223,7 @@ export class Gateway {
       session.nativeSessionIds = {}
       const recent = [expanded, ...(session.recentWorkdirs ?? []).filter((d) => d !== expanded)]
       session.recentWorkdirs = recent.slice(0, 5)
-      out.replies = out.replies.map((r) => r.replace(out.set!.workspace!, expanded) + '\n（session 已清空，/resume 恢复该目录）')
+      out.replies = out.replies.map((r) => r.replace(out.set!.workspace!, expanded) + '\n\n（session 已清空，/resume 恢复该目录）')
     }
     if (out.set?.backend && out.set.backend !== session.backend) {
       session.backend = out.set.backend
@@ -329,7 +329,7 @@ export class Gateway {
       verbose === 'heartbeat'
         ? setInterval(() => {
             const mins = Math.max(1, Math.round((Date.now() - startedAt) / 60_000))
-            const text = `⏳ ${mins} 分钟 · ${progressCount} 步\n🔧 ${lastAction || '等待模型输出'}\n✋ /cancel`
+            const text = `⏳ ${mins} 分钟 · ${progressCount} 步\n\n🔧 ${lastAction || '等待模型输出'}\n\n✋ /cancel`
             this.deps.bot.send(userId, text).catch((err) => console.error('heartbeat send failed:', err))
           }, this.deps.heartbeatMs)
         : undefined

@@ -5,6 +5,7 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import { parseCodexLine, initialCodexState } from './codex-parse.js'
+import { resolveBin } from '../resolve-bin.js'
 import { NO_EVENT_TIMEOUT_MS, type BackendAdapter, type HistoryTurn, type RunningTask, type SessionSummary, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
 
 export interface CodexAdapterOptions {
@@ -26,6 +27,7 @@ interface CodexModelCatalogEntry {
 export class CodexAdapter implements BackendAdapter {
   readonly name = 'codex'
   private readonly bin: string
+  private binPath?: string
   private readonly sandbox: string
   private readonly noEventMs: number
   private readonly livenessCheckMs: number
@@ -37,6 +39,13 @@ export class CodexAdapter implements BackendAdapter {
     this.sandbox = options.sandbox ?? 'workspace-write'
     this.noEventMs = options.noEventMs ?? NO_EVENT_TIMEOUT_MS
     this.livenessCheckMs = options.livenessCheckMs ?? 30_000
+  }
+
+  /** 解析 bin 绝对路径（GUI 环境 PATH 不全，spawn ENOENT 的防护），结果缓存。 */
+  private async binCmd(): Promise<string> {
+    if (this.binPath) return this.binPath
+    this.binPath = this.bin.includes('/') ? this.bin : await resolveBin(this.bin)
+    return this.binPath
   }
 
   /** 读取 codex 模型 catalog（~/.codex/models_cache.json），结构变化时降级为空。 */
@@ -175,7 +184,7 @@ export class CodexAdapter implements BackendAdapter {
           input.prompt,
         ]
 
-    const child = spawn(this.bin, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(await this.binCmd(), args, { stdio: ['ignore', 'pipe', 'pipe'] })
 
     const queue: TaskEvent[] = []
     let notify: (() => void) | undefined

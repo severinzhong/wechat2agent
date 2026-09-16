@@ -41,8 +41,10 @@ const gateway = new Gateway({
 })
 
 bot.onMessage((msg) => {
-  gateway.handleMessage(msg).catch((err) => {
+  gateway.handleMessage(msg).catch(async (err) => {
     gwLog.say('error', `handleMessage failed: ${err}`)
+    // 错误必须回微信（用户不能对着沉默排查问题）；回复失败则仅记录
+    await bot.reply(msg, `❌ 处理出错：${(err as Error).message}`).catch(() => {})
   })
 })
 bot.on('session:expired', () => gwLog.say('error', 'iLink 会话过期，请重启并重新扫码'))

@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import readline from 'node:readline'
 import { randomUUID } from 'node:crypto'
 import { parseZlLine, initialZlState } from './zl-parse.js'
+import { resolveBin } from '../resolve-bin.js'
 import { NO_EVENT_TIMEOUT_MS, type AdapterHooks, type BackendAdapter, type HistoryTurn, type RunningTask, type SessionSummary, type StartTaskInput, type TaskEvent, type TaskResult } from './types.js'
 
 /** 剔除从父进程（如 IDE 派生 shell）继承的 server 认证变量，保证回环 server 无 basic auth、行为一致。 */
@@ -21,10 +22,17 @@ export class ZlServerManager {
     private readonly hooks: AdapterHooks = {},
   ) {}
 
+  private binPath?: string
+  private async binCmd(): Promise<string> {
+    if (this.binPath) return this.binPath
+    this.binPath = this.bin.includes('/') ? this.bin : await resolveBin(this.bin)
+    return this.binPath
+  }
+
   async ensureServer(workspace: string): Promise<string> {
     const existing = this.servers.get(workspace)
     if (existing) return existing.url
-    const child = spawn(this.bin, ['serve', '--port', '0', '--hostname', '127.0.0.1'], {
+    const child = spawn(await this.binCmd(), ['serve', '--port', '0', '--hostname', '127.0.0.1'], {
       cwd: workspace,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: cleanEnv(),
@@ -68,10 +76,18 @@ export class ZlAdapter implements BackendAdapter {
     private readonly noEventMs: number = NO_EVENT_TIMEOUT_MS,
   ) {}
 
+  private binPath?: string
+  private async binCmd(): Promise<string> {
+    if (this.binPath) return this.binPath
+    this.binPath = this.bin.includes('/') ? this.bin : await resolveBin(this.bin)
+    return this.binPath
+  }
+
   async listModels(): Promise<string[]> {
     if (this.modelsCache) return this.modelsCache
+    const bin = await this.binCmd()
     const output = await new Promise<string>((resolve, reject) => {
-      const child = spawn(this.bin, ['models'], { stdio: ['ignore', 'pipe', 'pipe'] })
+      const child = spawn(bin, ['models'], { stdio: ['ignore', 'pipe', 'pipe'] })
       let out = ''
       child.stdout!.on('data', (d: Buffer) => { out += d.toString() })
       child.on('close', (code) => {
@@ -152,7 +168,7 @@ export class ZlAdapter implements BackendAdapter {
       ...(input.effort ? ['--variant', input.effort] : []),
       input.prompt,
     ]
-    const child = spawn(this.bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env: cleanEnv() })
+    const child = spawn(await this.binCmd(), args, { stdio: ['ignore', 'pipe', 'pipe'], env: cleanEnv() })
 
     const queue: TaskEvent[] = []
     let notify: (() => void) | undefined

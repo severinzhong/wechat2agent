@@ -30,6 +30,8 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private var statusItem: NSStatusItem!
   private var timer: Timer?
   private var status: GatewayStatus?
+  private let defaults = UserDefaults.standard
+  private let stopOnQuitKey = "stopGatewayOnQuit"
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -114,6 +116,10 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
       addItem(menu, "启动 Gateway", #selector(startGateway))
     }
     addItem(menu, "查看日志", #selector(openLog))
+    let toggle = NSMenuItem(title: "退出面板时停止 Gateway", action: #selector(toggleStopOnQuit), keyEquivalent: "")
+    toggle.target = self
+    toggle.state = defaults.bool(forKey: stopOnQuitKey) ? .on : .off
+    menu.addItem(toggle)
     menu.addItem(.separator())
     addItem(menu, "退出面板", #selector(quit))
   }
@@ -181,7 +187,16 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: dir)
   }
 
+  @objc private func toggleStopOnQuit(_ sender: NSMenuItem) {
+    let next = !defaults.bool(forKey: stopOnQuitKey)
+    defaults.set(next, forKey: stopOnQuitKey)
+    sender.state = next ? .on : .off
+  }
+
   @objc private func quit() {
+    if defaults.bool(forKey: stopOnQuitKey) {
+      stopGateway()
+    }
     NSApplication.shared.terminate(nil)
   }
 }

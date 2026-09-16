@@ -34,7 +34,8 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let stopOnQuitKey = "stopGatewayOnQuit"
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-    statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    // 方形按钮（宽度=菜单栏高度），避免图标内容把按钮撑宽
+    statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     let menu = NSMenu()
     menu.delegate = self
     statusItem.menu = menu
@@ -73,6 +74,8 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
       if let img = NSImage(contentsOfFile: iconPath) {
         // 白色图标 + 透明背景：不做 template 着色（菜单栏多为深色）
         img.isTemplate = false
+        // 关键：文件加载的 NSImage 尺寸默认是像素值（36pt），必须显式约束到 18pt
+        img.size = NSSize(width: 18, height: 18)
         statusItem.button?.image = img
         statusItem.button?.image?.accessibilityDescription = "wechat2agent"
         statusItem.button?.title = ""

@@ -40,20 +40,26 @@ white = Image.new('L', src.size, 255)
 # 菜单栏多为深色：图形保留白色，背景透明（非 template，固定白色显示）
 tpl = Image.merge('RGBA', (white, white, white, alpha))
 
-# 按 alpha bbox 裁剪并留 8% 边距
+# 按 alpha bbox 裁剪内容
 bbox = tpl.getbbox()
 if bbox:
-    mx = round((bbox[2] - bbox[0]) * 0.08)
-    my = round((bbox[3] - bbox[1]) * 0.08)
-    bbox = (max(0, bbox[0] - mx), max(0, bbox[1] - my),
-            min(w, bbox[2] + mx), min(h, bbox[3] + my))
     tpl = tpl.crop(bbox)
 
-# 方形化（菜单栏图标需要正方形，短边补齐透明）
+# 以内容的 alpha 质心居中（而非几何中心）：气泡尾巴等细部会让几何中心偏移
+alpha_ch = tpl.getchannel('A')
 tw, th = tpl.size
-side = max(tw, th)
+row_proj = alpha_ch.resize((1, th), Image.BILINEAR)  # 每行均值
+col_proj = alpha_ch.resize((tw, 1), Image.BILINEAR)  # 每列均值
+row_sum = sum(row_proj.getpixel((0, y)) for y in range(th)) or 1
+col_sum = sum(col_proj.getpixel((x, 0)) for x in range(tw)) or 1
+cy = sum(y * row_proj.getpixel((0, y)) for y in range(th)) / row_sum
+cx = sum(x * col_proj.getpixel((x, 0)) for x in range(tw)) / col_sum
+
+# 内容占画布 72%，质心对齐画布中心
+CONTENT_RATIO = 0.72
+side = round(max(tw, th) / CONTENT_RATIO)
 square = Image.new('RGBA', (side, side), (0, 0, 0, 0))
-square.paste(tpl, ((side - tw) // 2, (side - th) // 2))
+square.paste(tpl, (round(side / 2 - cx), round(side / 2 - cy)))
 
 for px in (18, 36, 54):
     square.resize((px, px), Image.LANCZOS).save(os.path.join(OUT, f'menubar-{px}.png'))

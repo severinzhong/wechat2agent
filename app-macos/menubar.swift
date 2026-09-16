@@ -99,7 +99,8 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     menu.removeAllItems()
     if let s = status, s.ok {
       let mins = s.uptimeSec / 60
-      menu.addItem(.init(title: "运行中 · \(s.accountId ?? "?") · \(mins) 分钟", action: nil, keyEquivalent: ""))
+      let uptime = mins >= 60 ? "\(mins / 60) 小时 \(mins % 60) 分" : "\(mins) 分钟"
+      menu.addItem(.init(title: "运行中 · \(uptime)", action: nil, keyEquivalent: ""))
       menu.addItem(.separator())
       for p in s.peers {
         let task = p.taskActive ? " · 任务运行中" : ""

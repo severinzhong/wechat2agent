@@ -71,11 +71,12 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     if let res = Bundle.main.resourceURL {
       let iconPath = res.appendingPathComponent("menubar-36.png").path
       if let img = NSImage(contentsOfFile: iconPath) {
-        img.isTemplate = true
+        // 白色图标 + 透明背景：不做 template 着色（菜单栏多为深色）
+        img.isTemplate = false
         statusItem.button?.image = img
         statusItem.button?.image?.accessibilityDescription = "wechat2agent"
         statusItem.button?.title = ""
-        // template 图标无法用颜色区分状态：以透明度区分（运行 1.0 / 停止 0.35）
+        // 以透明度区分状态（运行 1.0 / 停止 0.35）
         statusItem.button?.alphaValue = running ? 1.0 : 0.35
         return
       }

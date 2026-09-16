@@ -11,3 +11,5 @@ build/
 *.log
 gateway/.storage/
 
+app-macos/icons/.venv/
+app-macos/icons/generated/

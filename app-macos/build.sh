@@ -21,19 +21,14 @@ echo "==> 2/4 编译菜单栏面板"
 swiftc -O -target arm64-apple-macosx14.0 "$ROOT/app-macos/menubar.swift" -o "$DIST/wechat2agent"
 
 echo "==> 3/6 生成图标资产"
-ICONSET="$DIST/AppIcon.iconset"
-rm -rf "$ICONSET" && mkdir -p "$ICONSET"
-for spec in "16:16" "32:16x16@2x" "32:32" "64:32x32@2x" "128:128" "256:128x128@2x" "256:256" "512:256x256@2x" "512:512" "1024:512x512@2x"; do
-  px="${spec%%:*}"; name="${spec##*:}"
-  qlmanage -t -s "$px" -o "$DIST" "$ROOT/app-macos/icons/appicon.svg" > /dev/null 2>&1
-  mv "$DIST/appicon.svg.png" "$ICONSET/icon_${name}.png"
-done
-iconutil -c icns "$ICONSET" -o "$DIST/AppIcon.icns"
-# 菜单栏 template 图标（透明背景，系统按明暗模式着色）
-for px in 18 36 54; do
-  qlmanage -t -s "$px" -o "$DIST" "$ROOT/app-macos/icons/menubar.svg" > /dev/null 2>&1
-  mv "$DIST/menubar.svg.png" "$DIST/menubar-${px}.png"
-done
+# 源图 app-macos/icons/source.png（AI 生成），Pillow 在项目内 venv（可复现构建）
+VENV="$ROOT/app-macos/icons/.venv"
+if [ ! -x "$VENV/bin/python" ]; then
+  python3 -m venv "$VENV" && "$VENV/bin/pip" install -q pillow
+fi
+"$VENV/bin/python" "$ROOT/app-macos/icons/process-icons.py" "$ROOT/app-macos/icons/source.png"
+iconutil -c icns "$ROOT/app-macos/icons/generated/AppIcon.iconset" -o "$DIST/AppIcon.icns"
+cp "$ROOT/app-macos/icons/generated"/menubar-*.png "$DIST/"
 
 echo "==> 4/6 组装 .app"
 rm -rf "$APP"

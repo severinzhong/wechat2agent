@@ -40,10 +40,11 @@ white = Image.new('L', src.size, 255)
 # 菜单栏多为深色：图形保留白色，背景透明（非 template，固定白色显示）
 tpl = Image.merge('RGBA', (white, white, white, alpha))
 
-# 按 alpha bbox 裁剪内容
-bbox = tpl.getbbox()
+# 按 alpha bbox 裁剪内容（必须只看 alpha 通道：RGB 全白时 getbbox 会返回全图）
+bbox = tpl.getchannel('A').getbbox()
 if bbox:
     tpl = tpl.crop(bbox)
+print(f'[debug] alpha bbox = {bbox}, 裁剪后 = {tpl.size}')
 
 # 以内容的 alpha 质心居中（而非几何中心）：气泡尾巴等细部会让几何中心偏移
 alpha_ch = tpl.getchannel('A')
@@ -55,9 +56,10 @@ col_sum = sum(col_proj.getpixel((x, 0)) for x in range(tw)) or 1
 cy = sum(y * row_proj.getpixel((0, y)) for y in range(th)) / row_sum
 cx = sum(x * col_proj.getpixel((x, 0)) for x in range(tw)) / col_sum
 
-# 内容占画布 72%，质心对齐画布中心
-CONTENT_RATIO = 0.72
-side = round(max(tw, th) / CONTENT_RATIO)
+# 以内容高度为基准顶格（菜单栏 18pt 是高度受限空间）；
+# 横向构图的宽度溢出由画布自然裁切，让图标"顶天立地"
+CONTENT_RATIO = 0.96
+side = round(th / CONTENT_RATIO)
 square = Image.new('RGBA', (side, side), (0, 0, 0, 0))
 square.paste(tpl, (round(side / 2 - cx), round(side / 2 - cy)))
 

@@ -30,6 +30,7 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private var statusItem: NSStatusItem!
   private var timer: Timer?
   private var status: GatewayStatus?
+  private var starting = false
   private let defaults = UserDefaults.standard
   private let stopOnQuitKey = "stopGatewayOnQuit"
 
@@ -61,6 +62,8 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
       let decoded = data.flatMap { try? JSONDecoder().decode(GatewayStatus.self, from: $0) }
       DispatchQueue.main.async {
         self.status = decoded
+        // 状态端点已响应：gateway 就绪，退出"启动中"过渡态
+        if decoded?.ok == true { self.starting = false }
         self.refreshIcon()
       }
     }.resume()
@@ -118,7 +121,13 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     } else {
       menu.addItem(.init(title: "未运行", action: nil, keyEquivalent: ""))
       menu.addItem(.separator())
-      addItem(menu, "启动 Gateway", #selector(startGateway))
+      if starting {
+        let item = NSMenuItem(title: "启动中…", action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        menu.addItem(item)
+      } else {
+        addItem(menu, "启动 Gateway", #selector(startGateway))
+      }
     }
     addItem(menu, "查看日志", #selector(openLog))
     let toggle = NSMenuItem(title: "退出面板时停止 Gateway", action: #selector(toggleStopOnQuit), keyEquivalent: "")
@@ -139,7 +148,13 @@ final class PanelApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   /// 启动命令：优先 app bundle 内嵌的 node + gateway.mjs；
   /// 开发模式（loose binary）读 ~/.wechat2agent/gateway-home 指向的项目目录，用 npm start。
+  /// 启动期间进入"启动中"过渡态（菜单禁用防重复点击）；状态端点首次响应或 20s 兜底后复位。
   @objc private func startGateway() {
+    guard !starting else { return }
+    starting = true
+    DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+      self?.starting = false
+    }
     if let res = Bundle.main.resourceURL {
       let node = res.appendingPathComponent("node").path
       let script = res.appendingPathComponent("gateway.mjs").path

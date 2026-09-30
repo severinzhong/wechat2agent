@@ -11,5 +11,15 @@ build/
 *.log
 gateway/.storage/
 
+# Local agent and browser automation state
+.zhanlu/
+.playwright-mcp/
+
+# macOS and Xcode build artifacts
+DerivedData/
+.build/
+*.xcuserstate
+*.app/
+
 app-macos/icons/.venv/
 app-macos/icons/generated/
